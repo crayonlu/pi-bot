@@ -184,6 +184,7 @@ export default function telegramExtension(
 			pi.sendUserMessage(tx, { deliverAs: "followUp" });
 			await bot.sendMessage(msg.chatId, "Queued.");
 		} else {
+			console.log("[telegram] sendUserMessage:", tx.slice(0, 50));
 			pi.sendUserMessage(tx);
 			wCid = msg.chatId;
 			startW();
@@ -191,12 +192,14 @@ export default function telegramExtension(
 	});
 
 	pi.on("agent_start", () => {
+		console.log("[telegram] agent_start");
 		busy = true;
 	});
 	pi.on("tool_execution_start", (e) => {
 		const ev = e as unknown as { toolName?: string; args?: unknown };
 		const toolName = ev.toolName ?? "?";
 		const argsText = sum(toolName, ev.args);
+		console.log("[telegram] tool_execution_start:", toolName);
 		app(`[tool] ${toolName} ${argsText}`);
 		if (isDangerous(ev)) {
 			app("[warn] dangerous operation; review before continuing");
@@ -204,6 +207,7 @@ export default function telegramExtension(
 		}
 	});
 	pi.on("message_end", (e) => {
+		console.log("[telegram] message_end");
 		const ev = e as unknown as {
 			message?: { role?: string; content?: Array<{ type: string; text?: string; thinking?: string }> };
 		};
@@ -214,6 +218,7 @@ export default function telegramExtension(
 		}
 	});
 	pi.on("turn_end", async (e) => {
+		console.log("[telegram] turn_end");
 		const ev = e as unknown as { message?: { usage?: { input: number; output: number } } };
 		if (ev.message?.usage) {
 			const tk = (ev.message.usage.input ?? 0) + (ev.message.usage.output ?? 0);
@@ -221,6 +226,7 @@ export default function telegramExtension(
 		}
 	});
 	pi.on("agent_end", () => {
+		console.log("[telegram] agent_end: text length=", agentText.length);
 		const chat = ch();
 		if (agentText.trim()) {
 			bot.sendMarkdown(chat, agentText).catch((mdErr) => {

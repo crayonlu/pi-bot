@@ -21,21 +21,39 @@ export default function personaPromptExtension(pi: ExtensionAPI, config: BotConf
 	let isImageModel = false;
 
 	pi.on("before_agent_start", async (event) => {
-		if (!config.setupComplete || !config.persona) return;
+		console.log("[ops-prompt] before_agent_start start");
+		if (!config.setupComplete || !config.persona) {
+			console.log(
+				"[ops-prompt] skip: setupComplete=",
+				config.setupComplete,
+				"persona length=",
+				config.persona?.length,
+			);
+			return;
+		}
 
-		// Auto-switch model: MiMo for images, DeepSeek V4 Flash for text
-		const hasImages = event.images && event.images.length > 0;
-		if (hasImages && !isImageModel) {
-			await pi.setModel({ provider: "ppio", id: "xiaomimimo/mimo-v2.5" } as Parameters<typeof pi.setModel>[0]);
-			isImageModel = true;
-		} else if (!hasImages && isImageModel) {
-			await pi.setModel({ provider: "ppio", id: "deepseek/deepseek-v4-flash" } as Parameters<typeof pi.setModel>[0]);
-			isImageModel = false;
+		try {
+			// Auto-switch model: MiMo for images, DeepSeek V4 Flash for text
+			const hasImages = event.images && event.images.length > 0;
+			console.log("[ops-prompt] hasImages=", hasImages, "isImageModel=", isImageModel);
+			if (hasImages && !isImageModel) {
+				await pi.setModel({ provider: "ppio", id: "xiaomimimo/mimo-v2.5" } as Parameters<typeof pi.setModel>[0]);
+				isImageModel = true;
+			} else if (!hasImages && isImageModel) {
+				await pi.setModel({ provider: "ppio", id: "deepseek/deepseek-v4-flash" } as Parameters<
+					typeof pi.setModel
+				>[0]);
+				isImageModel = false;
+			}
+		} catch (e) {
+			console.error("[ops-prompt] setModel failed:", (e as Error).message);
 		}
 
 		// Keep pi's built-in system prompt (tool schemas, formats) and prepend persona + platform context.
 		const platform = buildPlatformContext();
-		return { systemPrompt: `${config.persona}\n\n${platform}\n\n${event.systemPrompt}` };
+		const combined = `${config.persona}\n\n${platform}\n\n${event.systemPrompt}`;
+		console.log("[ops-prompt] system prompt length:", combined.length);
+		return { systemPrompt: combined };
 	});
 }
 
