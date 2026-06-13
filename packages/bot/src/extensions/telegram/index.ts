@@ -67,8 +67,7 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 		wLines.push(line); if (wLines.length > 10) wLines.shift();
 		if (wChatId && wMsgId) bot.editMessage(wChatId, wMsgId, wLines.join("\n")).catch(() => {});
 	}
-
-	pi.on("agent_start", () => { busy = true; });
+	function ch(): number { return wChatId ?? chatId ?? 0; }
 	pi.on("tool_execution_start", (e) => {
 		const ev = e as unknown as { toolName?: string; args?: unknown };
 		appendWorking(`${ev.toolName ?? "?"} ${toolSummary(ev.toolName ?? "?", ev.args)}`);
