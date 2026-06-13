@@ -1,6 +1,4 @@
-#!/usr/bin/env node
-
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import type { AgentSession, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
 	createAgentSession,
@@ -29,10 +27,8 @@ async function main(): Promise<void> {
 	const cwd = "/";
 	const agentDir = getConfigDir();
 	const sessionDir = getSessionDir();
-	await mkdir("/workspace", { recursive: true }).catch(() => {});
-
-	const sessionRef: { current: AgentSession | undefined } = { current: undefined };
-
+	await mkdir("/workspace", { recursive: true }).catch((err) => console.error("[pi-bot] workspace:", err.message));
+	await writeFile("/workspace/memory.md", "", { flag: "a" }).catch(() => {});
 	const extensionFactories: ExtensionFactory[] = [
 		(pi) => {
 			telegramExtension(pi, {
