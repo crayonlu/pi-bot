@@ -17,7 +17,8 @@
 		"@earendil-works/pi-coding-agent": "*",
 		"grammy": "1.35.0",
 		"https-proxy-agent": "7.0.6",
-		"playwright": "1.60.0"
+		"playwright": "1.60.0",
+		"telegram-markdown-v2": "0.0.4"
 	},
 	"devDependencies": {
 		"shx": "0.4.0"
