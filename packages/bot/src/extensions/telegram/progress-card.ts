@@ -105,8 +105,9 @@ export class ProgressCard {
 			}
 		}
 
-		if (this.currentAssistantText && this.status !== "done" && this.status !== "error") {
-			const trimmed = trimToLines(this.currentAssistantText, 8);
+		// Show streaming text when not in error state (persona bot needs response visible)
+		if (this.currentAssistantText && this.status !== "error") {
+			const trimmed = trimToLines(this.currentAssistantText, 12);
 			if (trimmed) {
 				parts.push("\u2502");
 				for (const line of trimmed.split("\n")) parts.push(`\u2502  ${line}`);
