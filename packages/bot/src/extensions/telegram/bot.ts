@@ -23,6 +23,9 @@ if (proxyUrl) {
 			return proxyAgent;
 		},
 	});
+	console.log("[bot] proxy configured via", proxyUrl);
+} else {
+	console.log("[bot] no proxy configured");
 }
 
 export interface IncomingMessage {
