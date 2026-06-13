@@ -56,7 +56,7 @@ async function main(): Promise<void> {
 		settingsManager,
 		resourceLoader,
 		sessionManager,
-		tools: ["bash", "read", "write", "edit", "grep", "find", "ls"],
+		tools: ["bash", "read", "write", "edit", "grep", "find", "ls", "browser", "reply"],
 	});
 	sessionRef.current = session;
 	await session.bindExtensions({ mode: "rpc" });
