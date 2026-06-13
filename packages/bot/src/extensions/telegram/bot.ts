@@ -16,7 +16,9 @@ if (proxyUrl) {
 		},
 	});
 	console.log("[bot] proxy configured via", proxyUrl);
-} else console.log("[bot] no proxy configured");
+} else {
+	console.log("[bot] no proxy configured");
+}
 
 export interface IncomingMessage {
 	message_id: number;
@@ -27,6 +29,9 @@ export interface IncomingMessage {
 	caption: string | undefined;
 }
 export type MessageHandler = (message: IncomingMessage) => void | Promise<void>;
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export class TelegramBot {
 	readonly raw: Bot;
@@ -35,6 +40,7 @@ export class TelegramBot {
 	constructor(token: string) {
 		this.raw = new Bot(token);
 	}
+
 	onMessage(h: MessageHandler): void {
 		this.handler = h;
 	}
@@ -57,8 +63,13 @@ export class TelegramBot {
 		this.raw.catch((err) => {
 			console.error("[telegram] bot error:", err.message);
 		});
-		await this.raw.start({ drop_pending_updates: true, timeout: 30, allowed_updates: ["message"] });
+		await this.raw.start({
+			drop_pending_updates: true,
+			timeout: 30,
+			allowed_updates: ["message", "callback_query"],
+		});
 	}
+
 	stop(): void {
 		this.raw.stop();
 	}
@@ -92,8 +103,49 @@ export class TelegramBot {
 		return lastId;
 	}
 
+	// Rate-limited editMessage: max 15 edits/min (Telegram limit ~20/min).
+	// Queue merges duplicate keys — only the latest text per message is kept.
+	private editQueue: Map<string, { chatId: number; messageId: number; text: string }> = new Map();
+	private editInFlight = false;
+	private editTimestamps: number[] = [];
+
 	async editMessage(chatId: number, messageId: number, text: string): Promise<void> {
-		await this.raw.api.editMessageText(chatId, messageId, text);
+		const key = `${chatId}:${messageId}`;
+		this.editQueue.set(key, { chatId, messageId, text });
+		this.processEditQueue();
+	}
+
+	private processEditQueue(): void {
+		if (this.editInFlight || this.editQueue.size === 0) return;
+		this.editInFlight = true;
+		this.runEdit().finally(() => {
+			this.editInFlight = false;
+			if (this.editQueue.size > 0) this.processEditQueue();
+		});
+	}
+
+	private async runEdit(): Promise<void> {
+		const entry = this.editQueue.values().next().value;
+		if (!entry) return;
+		this.editQueue.delete(`${entry.chatId}:${entry.messageId}`);
+
+		// Clean expired timestamps
+		const now = Date.now();
+		this.editTimestamps = this.editTimestamps.filter((t) => now - t < 60_000);
+
+		// Wait if at rate limit
+		if (this.editTimestamps.length >= 15) {
+			const waitMs = this.editTimestamps[0] + 60_000 - now + 500;
+			if (waitMs > 0) await sleep(waitMs);
+			this.editTimestamps = this.editTimestamps.filter((t) => Date.now() - t < 60_000);
+		}
+
+		try {
+			await this.raw.api.editMessageText(entry.chatId, entry.messageId, entry.text);
+			this.editTimestamps.push(Date.now());
+		} catch {
+			// Edit may fail if content unchanged or message too old
+		}
 	}
 
 	async sendPhoto(chatId: number, image: string, caption?: string): Promise<number> {
@@ -111,6 +163,18 @@ export class TelegramBot {
 			}
 		}
 		const msg = await this.raw.api.sendPhoto(chatId, image, { caption });
+		return msg.message_id;
+	}
+
+	async sendInlineKeyboard(
+		chatId: number,
+		text: string,
+		buttons: Array<{ text: string; data: string }>,
+	): Promise<number> {
+		const keyboard = {
+			inline_keyboard: buttons.map((b) => [{ text: b.text, callback_data: b.data }]),
+		};
+		const msg = await this.raw.api.sendMessage(chatId, text, { reply_markup: keyboard });
 		return msg.message_id;
 	}
 

@@ -129,8 +129,9 @@ export default function telegramExtension(
 	}
 
 	async function app(line: string): Promise<void> {
-		wLines.push(line);
-		if (wCid && wMid) bot.editMessage(wCid, wMid, wLines.join("\n")).catch(() => {});
+		const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+		wLines.push(`[${ts}] ${line}`);
+		if (wCid && wMid) bot.editMessage(wCid, wMid, wLines.join("\n")).catch((e) => log("edit err:", e.message));
 	}
 
 	pi.on("agent_start", () => {
@@ -158,11 +159,17 @@ export default function telegramExtension(
 		}
 	});
 	pi.on("agent_end", () => {
-		if (agentText.trim()) bot.sendMarkdown(ch(), agentText).catch(() => {});
+		if (agentText.trim()) {
+			// Try MarkdownV2 first, fallback to plain text on failure
+			bot.sendMarkdown(ch(), agentText).catch((mdErr) => {
+				log("sendMarkdown failed, falling back to plain text:", mdErr.message);
+				bot.sendMessage(ch(), agentText).catch((e) => log("sendMessage also failed:", e.message));
+			});
+		}
 		agentText = "";
 		busy = false;
 		if (wMid) {
-			wLines.push("- done");
+			wLines.push("[done]");
 			bot.editMessage(wCid ?? 0, wMid, wLines.join("\n")).catch(() => {});
 		}
 		wMid = undefined;
