@@ -66,6 +66,7 @@ export default function telegramExtension(
 
 	bot.onMessage(async (msg) => {
 		if (!msg.userId || !isAllowedUser(config, msg.userId)) return;
+		log(`msg: uid=${msg.userId} txt="${msg.text?.slice(0, 50)}"`);
 		cid = msg.chatId;
 		if (wz.active) {
 			if (msg.text) await wz.handleMessage(msg.chatId, msg.text);
