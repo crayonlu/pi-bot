@@ -1,7 +1,7 @@
 /**
  * Telegram Bot wrapper built on grammY.
  *
- * Supports proxy via HTTPS_PROXY env var using undici's ProxyAgent.
+ * Proxy support: reads HTTPS_PROXY env var, configures via grammy's client.fetch option.
  */
 
 import { unlink, writeFile } from "node:fs/promises";
@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Bot } from "grammy";
 import type { PhotoSize } from "grammy/types";
-import { ProxyAgent, setGlobalDispatcher } from "undici";
+import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 export interface IncomingMessage {
 	message_id: number;
@@ -28,10 +28,16 @@ export class TelegramBot {
 
 	constructor(token: string) {
 		const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+		const config: Record<string, unknown> = {};
+
 		if (proxy) {
-			setGlobalDispatcher(new ProxyAgent(proxy));
+			const agent = new ProxyAgent(proxy);
+			const proxiedFetch = (url: string, init?: RequestInit) =>
+				undiciFetch(url, { ...init, dispatcher: agent } as Parameters<typeof undiciFetch>[1]);
+			config.client = { fetch: proxiedFetch };
 		}
-		this.raw = new Bot(token);
+
+		this.raw = new Bot(token, config as NonNullable<ConstructorParameters<typeof Bot>[1]>);
 	}
 
 	onMessage(handler: MessageHandler): void {
@@ -88,7 +94,6 @@ export class TelegramBot {
 		await this.raw.api.editMessageText(chatId, messageId, text, { parse_mode: "HTML" });
 	}
 
-	/** Send a photo. `image` can be a URL, file_id, or base64 data URL. */
 	async sendPhoto(chatId: number, image: string, caption?: string): Promise<number> {
 		if (image.startsWith("data:")) {
 			const match = image.match(/^data:image\/[^;]+;base64,(.+)$/);
