@@ -53,8 +53,8 @@ function buildPlatformContext(): string {
 	sections.push("You are a Telegram bot. The user sends you messages; you reply via the agent loop.");
 	sections.push("- Telegram message limit: ~4000 characters. Split long messages automatically.");
 	sections.push("- Markdown is supported (bold, italic, code fences, links).");
-	sections.push("- Use `reply` tool to send standalone messages or images to the user.");
-	sections.push("- The progress card in Telegram shows your tool execution live.");
+	sections.push("- To send an image: first use `browser` tool with action `screenshot` to capture, then call `reply({ image: \"data:image/png;base64,...\" })` to send the image to the user.");
+	sections.push("- Use `reply` tool to send standalone text messages to the user.");
 	sections.push("");
 
 	sections.push("## Tools");
