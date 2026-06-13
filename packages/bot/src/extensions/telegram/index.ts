@@ -2,8 +2,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BotConfig } from "../../config.ts";
 import { isAllowedUser } from "../../config.ts";
 import { TelegramBot } from "./bot.ts";
-import { createEventBridge } from "./event-bridge.ts";
-import { ProgressCard } from "./progress-card.ts";
 import { registerReplyTool } from "./reply-tool.ts";
 import { SetupWizard } from "./setup-wizard.ts";
 
@@ -24,22 +22,32 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 
 	console.log("[telegram] init");
 	const bot = new TelegramBot(token);
-	const card = new ProgressCard(2000, (chatId, messageId, text) => bot.editMessage(chatId, messageId, text));
-	const eventBridge = createEventBridge(card, { showToolDetails: true, showTokenUsage: true });
 
 	let currentChatId: number | undefined;
 	let isAgentBusy = false;
+	let workingMsgId: number | undefined;
+	let workingChatId: number | undefined;
+	interface CompletedTool {
+		name: string;
+		summary: string;
+		ok: boolean;
+	}
+
+	let buffer = "";
+	let completedTools: CompletedTool[] = [];
+	let tokenInfo = "";
+	let lastFlush = 0;
+	const FLUSH_INTERVAL = 1000;
 
 	const wizard = new SetupWizard(bot, config, (updatedConfig) => {
 		Object.assign(config, updatedConfig);
 	});
-
 	registerReplyTool(pi, { bot, getChatId: () => currentChatId });
 
 	const COMMANDS: Record<string, (chatId: number, args: string) => Promise<void>> = {
 		"/start": async (chatId) => {
 			if (!config.setupComplete) await wizard.start(chatId);
-			else await bot.sendMessage(chatId, "Ready. Send a message to start.\n/config to reconfigure.");
+			else await bot.sendMessage(chatId, "Ready. /config to reconfigure.");
 		},
 		"/config": async (chatId) => {
 			await wizard.start(chatId);
@@ -70,7 +78,6 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 	};
 
 	bot.onMessage(async (msg) => {
-		console.log("[telegram] message from=", msg.userId, "text=", msg.text?.slice(0, 40));
 		if (!msg.userId || !isAllowedUser(config, msg.userId)) return;
 		currentChatId = msg.chatId;
 
@@ -100,7 +107,7 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 						],
 						isAgentBusy ? { deliverAs: "followUp" } : undefined,
 					);
-					await startProgressCard(msg.chatId);
+					await startWorking(msg.chatId);
 				} catch {
 					await bot.sendMessage(msg.chatId, "Download fail.");
 				}
@@ -121,58 +128,126 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 			await bot.sendMessage(msg.chatId, "Queued.");
 		} else {
 			pi.sendUserMessage(text);
-			await startProgressCard(msg.chatId);
+			await startWorking(msg.chatId);
 		}
 	});
 
-	async function startProgressCard(chatId: number): Promise<void> {
+	async function startWorking(chatId: number): Promise<void> {
+		isAgentBusy = true;
+		buffer = "";
+		completedTools = [];
+		tokenInfo = "";
+		lastFlush = 0;
 		try {
-			isAgentBusy = true;
-			const mid = await bot.sendMessage(chatId, "\u25B8 Working...");
-			card.init(chatId, mid);
+			const msgId = await bot.sendMessage(chatId, "\u2026");
+			workingMsgId = msgId;
+			workingChatId = chatId;
 		} catch {
-			isAgentBusy = false;
+			/* ok */
 		}
+	}
+
+	async function flushBuffer(): Promise<void> {
+		if (buffer.length === 0 && completedTools.length === 0 && tokenInfo.length === 0) return;
+		const toolLines = completedTools.map((t) => `${t.ok ? "\u2713" : "\u2717"} ${t.name} ${t.summary}`);
+		let msg = buffer;
+		if (toolLines.length) msg += `\n${toolLines.join("\n")}`;
+		if (tokenInfo) msg += `\n${tokenInfo}`;
+		if (!msg.trim()) return;
+		if (msg !== buffer) {
+			// Tools/tokens: append to buffer message, reset buffer
+			bot.sendMessage(workingChatId ?? currentChatId ?? 0, msg).catch(() => {});
+		}
+		buffer = "";
+		completedTools = [];
+		tokenInfo = "";
 	}
 
 	pi.on("agent_start", () => {
 		isAgentBusy = true;
 	});
-	pi.on("message_update", (e) => {
-		eventBridge(e as unknown as Record<string, unknown>);
-	});
 	pi.on("message_end", (e) => {
-		eventBridge(e as unknown as Record<string, unknown>);
+		const event = e as unknown as { message?: { role?: string; content?: Array<{ type: string; text?: string }> } };
+		if (event.message?.role !== "assistant" || !event.message.content) return;
+		const text = event.message.content
+			.filter((c): c is { type: "text"; text: string } => c.type === "text")
+			.map((c) => c.text)
+			.join("\n");
+		if (!text) return;
+		buffer += text;
+		const now = Date.now();
+		if (now - lastFlush > FLUSH_INTERVAL && buffer.length > 200) {
+			lastFlush = now;
+			bot.sendMessage(workingChatId ?? currentChatId ?? 0, buffer).catch(() => {});
+			buffer = "";
+		}
 	});
 	pi.on("tool_execution_start", (e) => {
-		eventBridge(e as unknown as Record<string, unknown>);
+		const event = e as unknown as { toolName?: string; args?: unknown };
+		completedTools.push({
+			name: event.toolName ?? "?",
+			summary: toolSummary(event.toolName ?? "?", event.args),
+			ok: true,
+		});
 	});
 	pi.on("tool_execution_end", (e) => {
-		eventBridge(e as unknown as Record<string, unknown>);
+		const event = e as unknown as { toolCallId?: string; isError?: boolean; result?: unknown };
+		const last = completedTools[completedTools.length - 1];
+		if (last) {
+			last.ok = !event.isError;
+			if (event.result && typeof event.result === "string") last.summary += ` (${truncate(event.result, 40)})`;
+		}
 	});
 	pi.on("turn_end", (e) => {
-		eventBridge(e as unknown as Record<string, unknown>);
+		const event = e as unknown as { message?: { usage?: { input: number; output: number; cacheRead?: number } } };
+		const usage = event.message?.usage;
+		if (usage) {
+			const total = (usage.input ?? 0) + (usage.output ?? 0);
+			tokenInfo = `${total.toLocaleString()} tokens`;
+		}
 	});
-	pi.on("agent_end", (event) => {
-		const e = event as unknown as { messages?: Array<{ role?: string; stopReason?: string }> };
-		if (e.messages?.at(-1)?.stopReason === "error") card.markError("Error.");
-		else card.markDone();
+	pi.on("agent_end", async () => {
+		await flushBuffer();
 		isAgentBusy = false;
+		// Edit working indicator to done
+		if (workingChatId && workingMsgId) {
+			bot.editMessage(workingChatId, workingMsgId, "\u2713").catch(() => {});
+		}
+		workingMsgId = undefined;
+		workingChatId = undefined;
 	});
 	pi.on("session_shutdown", () => {
 		bot.stop();
-		setTimeout(() => card.reset(), 5000);
 	});
 
 	console.log("[telegram] starting long-polling...");
 	bot.start()
-		.then(() => {
-			console.log("[telegram] polling active!");
-		})
-		.catch((err) => {
-			console.error("[telegram] start fail:", err instanceof Error ? err.message : err);
-		});
+		.then(() => console.log("[telegram] polling active!"))
+		.catch((err) => console.error("[telegram] start fail:", err instanceof Error ? err.message : err));
 	console.log("[telegram] extension ready");
+}
+
+function toolSummary(name: string, args: unknown): string {
+	if (!args || typeof args !== "object") return name;
+	const a = args as Record<string, unknown>;
+	switch (name) {
+		case "bash":
+			return typeof a.command === "string" ? truncate(a.command, 60) : name;
+		case "read":
+		case "edit":
+		case "write":
+			return typeof a.path === "string" ? a.path : name;
+		case "grep":
+			return typeof a.pattern === "string" ? `"${truncate(a.pattern, 30)}"` : name;
+		case "find":
+			return Array.isArray(a.paths) && typeof a.paths[0] === "string" ? a.paths[0] : name;
+		default:
+			return name;
+	}
+}
+
+function truncate(s: string, max: number): string {
+	return s.length <= max ? s : `${s.slice(0, max - 3)}...`;
 }
 
 interface ParsedDataUrl {
@@ -181,6 +256,5 @@ interface ParsedDataUrl {
 }
 function parseDataUrl(dataUrl: string): ParsedDataUrl | undefined {
 	const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-	if (!m?.[2]) return undefined;
-	return { mimeType: m[1], data: m[2] };
+	return m?.[2] ? { mimeType: m[1], data: m[2] } : undefined;
 }
