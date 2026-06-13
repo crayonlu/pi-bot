@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// Must be first — monkey-patches http/https to use HTTPS_PROXY env var
+import "global-agent/bootstrap";
+
 /**
  * pi-bot: Server agent daemon.
  *
@@ -38,10 +41,8 @@ async function main(): Promise<void> {
 	const agentDir = getConfigDir();
 	const sessionDir = getSessionDir();
 
-	// Ensure workspace directory exists for memory.md
 	await mkdir("/workspace", { recursive: true }).catch(() => {});
 
-	// Forward reference — assigned after createAgentSession
 	const sessionRef: { current: AgentSession | undefined } = { current: undefined };
 
 	const extensionFactories: ExtensionFactory[] = [
@@ -52,10 +53,7 @@ async function main(): Promise<void> {
 				onNew: () => {
 					if (sessionRef.current) sessionRef.current.agent.state.messages = [];
 				},
-				onCompact: () => {
-					// pi handles compaction automatically when context nears the window limit.
-					// /compact is a hint; auto-compaction kicks in on the next turn.
-				},
+				onCompact: () => {},
 			}),
 		(pi) => personaPromptExtension(pi, config),
 		(pi) => browserExtension(pi),

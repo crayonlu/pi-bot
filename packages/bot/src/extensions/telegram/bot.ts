@@ -1,7 +1,7 @@
 /**
  * Telegram Bot wrapper built on grammY.
  *
- * Proxy support: reads HTTPS_PROXY env var, configures via grammy's client.fetch option.
+ * Proxy is handled by global-agent/bootstrap in entry.ts — reads HTTPS_PROXY env var.
  */
 
 import { unlink, writeFile } from "node:fs/promises";
@@ -9,7 +9,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Bot } from "grammy";
 import type { PhotoSize } from "grammy/types";
-import { ProxyAgent, fetch as undiciFetch } from "undici";
 
 export interface IncomingMessage {
 	message_id: number;
@@ -27,17 +26,7 @@ export class TelegramBot {
 	private handler: MessageHandler | undefined;
 
 	constructor(token: string) {
-		const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
-		const config: Record<string, unknown> = {};
-
-		if (proxy) {
-			const agent = new ProxyAgent(proxy);
-			const proxiedFetch = (url: string, init?: RequestInit) =>
-				undiciFetch(url, { ...init, dispatcher: agent } as Parameters<typeof undiciFetch>[1]);
-			config.client = { fetch: proxiedFetch };
-		}
-
-		this.raw = new Bot(token, config as NonNullable<ConstructorParameters<typeof Bot>[1]>);
+		this.raw = new Bot(token);
 	}
 
 	onMessage(handler: MessageHandler): void {
