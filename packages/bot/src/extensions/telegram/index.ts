@@ -62,6 +62,7 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 	async function startWorking(): Promise<void> {
 		wLines = []; try { wMsgId = await bot.sendMessage(ch(), "---"); } catch { /* ok */ }
 	}
+	async function appendWorking(line: string): Promise<void> {
 		wLines.push(line); if (wLines.length > 10) wLines.shift();
 		if (wChatId && wMsgId) bot.editMessage(wChatId, wMsgId, wLines.join("\n")).catch(() => {});
 	}
