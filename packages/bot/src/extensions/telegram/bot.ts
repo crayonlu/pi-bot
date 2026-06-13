@@ -1,7 +1,7 @@
 /**
  * Telegram Bot wrapper built on grammY.
  *
- * Handles long polling, message editing, file downloads, image sending, and graceful shutdown.
+ * Supports proxy via HTTPS_PROXY env var using undici's ProxyAgent.
  */
 
 import { unlink, writeFile } from "node:fs/promises";
@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Bot } from "grammy";
 import type { PhotoSize } from "grammy/types";
+import { ProxyAgent, setGlobalDispatcher } from "undici";
 
 export interface IncomingMessage {
 	message_id: number;
@@ -26,6 +27,10 @@ export class TelegramBot {
 	private handler: MessageHandler | undefined;
 
 	constructor(token: string) {
+		const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
+		if (proxy) {
+			setGlobalDispatcher(new ProxyAgent(proxy));
+		}
 		this.raw = new Bot(token);
 	}
 
@@ -70,7 +75,6 @@ export class TelegramBot {
 			const msg = await this.raw.api.sendMessage(chatId, text, { parse_mode: "HTML" });
 			return msg.message_id;
 		}
-		// Split long messages into chunks
 		let lastId = 0;
 		for (let i = 0; i < text.length; i += maxLen) {
 			const chunk = text.slice(i, i + maxLen);
@@ -79,6 +83,11 @@ export class TelegramBot {
 		}
 		return lastId;
 	}
+
+	async editMessage(chatId: number, messageId: number, text: string): Promise<void> {
+		await this.raw.api.editMessageText(chatId, messageId, text, { parse_mode: "HTML" });
+	}
+
 	/** Send a photo. `image` can be a URL, file_id, or base64 data URL. */
 	async sendPhoto(chatId: number, image: string, caption?: string): Promise<number> {
 		if (image.startsWith("data:")) {
@@ -96,10 +105,6 @@ export class TelegramBot {
 		}
 		const msg = await this.raw.api.sendPhoto(chatId, image, { caption, parse_mode: "HTML" });
 		return msg.message_id;
-	}
-
-	async editMessage(chatId: number, messageId: number, text: string): Promise<void> {
-		await this.raw.api.editMessageText(chatId, messageId, text, { parse_mode: "HTML" });
 	}
 
 	async downloadFile(fileId: string): Promise<string> {
@@ -120,7 +125,6 @@ export class TelegramBot {
 			webp: "image/webp",
 			gif: "image/gif",
 		};
-		const mime = mimeMap[ext ?? ""] ?? "image/jpeg";
-		return `data:${mime};base64,${base64}`;
+		return `data:${mimeMap[ext ?? ""] ?? "image/jpeg"};base64,${base64}`;
 	}
 }
