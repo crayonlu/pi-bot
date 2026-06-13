@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 
-// Must be first — monkey-patches http/https to use HTTPS_PROXY env var
-import { bootstrap } from "global-agent";
-
-bootstrap();
-
 /**
  * pi-bot: Server agent daemon.
  *
  * Runs a persistent pi agent session with Telegram as the UI.
  * The agent has full server access (cwd: /).
+ *
+ * Network: TUN-mode proxy (mihomo) handles transparent routing.
  *
  * Usage:
  *   TELEGRAM_BOT_TOKEN=... node packages/bot/src/entry.ts
@@ -17,7 +14,6 @@ bootstrap();
  * Config: ~/.pi/bot/config.json (created by /start)
  * Sessions: ~/.pi/bot/sessions/
  */
-
 import { mkdir } from "node:fs/promises";
 import type { AgentSession, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
