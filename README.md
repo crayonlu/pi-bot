@@ -23,7 +23,7 @@ This is the home of the pi agent harness project including our self extensible c
 * **[@earendil-works/pi-coding-agent](packages/coding-agent)**: Interactive coding agent CLI
 * **[@earendil-works/pi-agent-core](packages/agent)**: Agent runtime with tool calling and state management
 * **[@earendil-works/pi-ai](packages/ai)**: Unified multi-provider LLM API (OpenAI, Anthropic, Google, …)
-
+* **[@crayonlu/pi-bot](packages/bot)**: Telegram bot daemon — a persistent AI agent with full server access
 To learn more about pi:
 
 * [Visit pi.dev](https://pi.dev), the project website with demos
@@ -53,8 +53,33 @@ I regularly publish my own `pi-mono` work sessions here:
 | **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
 | **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
 | **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
+| **[@crayonlu/pi-bot](packages/bot)** | Telegram bot daemon — persistent AI agent with full server access |
 
 For Slack/chat automation and workflows see [earendil-works/pi-chat](https://github.com/earendil-works/pi-chat).
+
+## pi-bot: Server Agent Daemon
+
+`packages/bot` is a persistent AI agent accessible via Telegram. It runs as a daemon on a server with full system access (bash, file operations, browser).
+
+**Features:**
+- Telegram bot interface with real-time progress display
+- Persona-based system prompt — define your agent's identity, tone, and behavior
+- Full server access: bash, read, write, edit, grep, find, ls, browser
+- Headless Chromium for web browsing and screenshots
+- Persistent session with auto-compaction for long-running conversations
+- Memory system via /workspace/memory.md
+- Proxy support (HTTP/SOCKS) for servers behind firewalls
+
+**Quick start:**
+```bash
+export TELEGRAM_BOT_TOKEN="...from @BotFather..."
+mkdir -p ~/.pi/bot
+# Add your provider config to ~/.pi/bot/models.json and settings.json
+npx playwright install chromium --with-deps
+node --experimental-strip-types packages/bot/src/entry.ts
+```
+
+Open Telegram, send `/start` to your bot, paste a persona, and start chatting.
 
 ## Permissions & Containerization
 
