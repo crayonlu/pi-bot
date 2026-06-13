@@ -33,8 +33,9 @@ export default function personaPromptExtension(pi: ExtensionAPI, config: BotConf
 			isImageModel = false;
 		}
 
+		// Keep pi's built-in system prompt (tool schemas, formats) and prepend persona + platform context.
 		const platform = buildPlatformContext();
-		return { systemPrompt: `${config.persona}\n\n${platform}` };
+		return { systemPrompt: `${config.persona}\n\n${platform}\n\n${event.systemPrompt}` };
 	});
 }
 
