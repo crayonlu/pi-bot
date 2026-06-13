@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 // Must be first — monkey-patches http/https to use HTTPS_PROXY env var
-import "global-agent/bootstrap";
+import { bootstrap } from "global-agent";
+
+bootstrap();
 
 /**
  * pi-bot: Server agent daemon.
