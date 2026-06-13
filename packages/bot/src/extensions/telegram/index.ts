@@ -1,7 +1,3 @@
-/**
- * Telegram channel extension for pi-bot.
- */
-
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BotConfig } from "../../config.ts";
 import { isAllowedUser } from "../../config.ts";
@@ -10,12 +6,6 @@ import { createEventBridge } from "./event-bridge.ts";
 import { ProgressCard } from "./progress-card.ts";
 import { registerReplyTool } from "./reply-tool.ts";
 import { SetupWizard } from "./setup-wizard.ts";
-
-const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
-
-function log(msg: string): void {
-	if (DEBUG) console.log(`[telegram] ${msg}`);
-}
 
 export interface TelegramExtensionOptions {
 	config: BotConfig;
@@ -32,7 +22,7 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 		return;
 	}
 
-	log("init");
+	console.log("[telegram] init");
 	const bot = new TelegramBot(token);
 	const card = new ProgressCard(2000, (chatId, messageId, text) => bot.editMessage(chatId, messageId, text));
 	const eventBridge = createEventBridge(card, { showToolDetails: true, showTokenUsage: true });
@@ -62,10 +52,10 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 		},
 		"/new": async (chatId) => {
 			onNew?.();
-			await bot.sendMessage(chatId, "Starting fresh session.");
+			await bot.sendMessage(chatId, "Fresh session.");
 		},
 		"/compact": async (chatId) => {
-			if (isAgentBusy) await bot.sendMessage(chatId, "Agent is busy.");
+			if (isAgentBusy) await bot.sendMessage(chatId, "Busy.");
 			else {
 				onCompact?.();
 				await bot.sendMessage(chatId, "Compacting...");
@@ -75,12 +65,12 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 			await bot.sendMessage(chatId, `Status: ${isAgentBusy ? "busy" : "idle"}`);
 		},
 		"/help": async (chatId) => {
-			await bot.sendMessage(chatId, ["Commands:", "/start /config /abort /new /compact /status /help"].join("\n"));
+			await bot.sendMessage(chatId, "/start /config /abort /new /compact /status /help");
 		},
 	};
 
 	bot.onMessage(async (msg) => {
-		log(`message from=${msg.userId} text=${msg.text?.slice(0, 40)}`);
+		console.log("[telegram] message from=", msg.userId, "text=", msg.text?.slice(0, 40));
 		if (!msg.userId || !isAllowedUser(config, msg.userId)) return;
 		currentChatId = msg.chatId;
 
@@ -100,20 +90,19 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 					const dataUrl = await bot.downloadFile(largest.file_id);
 					const parsed = parseDataUrl(dataUrl);
 					if (!parsed) {
-						await bot.sendMessage(msg.chatId, "Failed to process image.");
+						await bot.sendMessage(msg.chatId, "Image fail.");
 						return;
 					}
-					const caption = msg.caption || "Analyze this image";
 					pi.sendUserMessage(
 						[
-							{ type: "text" as const, text: caption },
+							{ type: "text" as const, text: msg.caption || "Analyze" },
 							{ type: "image" as const, data: parsed.data, mimeType: parsed.mimeType },
 						],
 						isAgentBusy ? { deliverAs: "followUp" } : undefined,
 					);
 					await startProgressCard(msg.chatId);
 				} catch {
-					await bot.sendMessage(msg.chatId, "Failed to download image.");
+					await bot.sendMessage(msg.chatId, "Download fail.");
 				}
 			}
 			return;
@@ -129,7 +118,7 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 
 		if (isAgentBusy) {
 			pi.sendUserMessage(text, { deliverAs: "followUp" });
-			await bot.sendMessage(msg.chatId, "Queued (agent is busy).");
+			await bot.sendMessage(msg.chatId, "Queued.");
 		} else {
 			pi.sendUserMessage(text);
 			await startProgressCard(msg.chatId);
@@ -139,8 +128,8 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 	async function startProgressCard(chatId: number): Promise<void> {
 		try {
 			isAgentBusy = true;
-			const messageId = await bot.sendMessage(chatId, "\u25B8 Working...");
-			card.init(chatId, messageId);
+			const mid = await bot.sendMessage(chatId, "\u25B8 Working...");
+			card.init(chatId, mid);
 		} catch {
 			isAgentBusy = false;
 		}
@@ -148,7 +137,6 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 
 	pi.on("agent_start", () => {
 		isAgentBusy = true;
-		log("agent_start");
 	});
 	pi.on("message_update", (e) => {
 		eventBridge(e as unknown as Record<string, unknown>);
@@ -167,26 +155,24 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 	});
 	pi.on("agent_end", (event) => {
 		const e = event as unknown as { messages?: Array<{ role?: string; stopReason?: string }> };
-		const lastMsg = e.messages?.at(-1);
-		if (lastMsg?.role === "assistant" && lastMsg.stopReason === "error") card.markError("Agent stopped with error.");
+		if (e.messages?.at(-1)?.stopReason === "error") card.markError("Error.");
 		else card.markDone();
 		isAgentBusy = false;
-		log("agent_end");
 	});
 	pi.on("session_shutdown", () => {
 		bot.stop();
 		setTimeout(() => card.reset(), 5000);
 	});
 
-	log("starting long-polling...");
+	console.log("[telegram] starting long-polling...");
 	bot.start()
 		.then(() => {
-			log("long-polling active");
+			console.log("[telegram] polling active!");
 		})
 		.catch((err) => {
-			console.error("[telegram] start error:", err instanceof Error ? err.message : err);
+			console.error("[telegram] start fail:", err instanceof Error ? err.message : err);
 		});
-	log("extension loaded");
+	console.log("[telegram] extension ready");
 }
 
 interface ParsedDataUrl {
@@ -194,7 +180,7 @@ interface ParsedDataUrl {
 	data: string;
 }
 function parseDataUrl(dataUrl: string): ParsedDataUrl | undefined {
-	const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-	if (!match || !match[2]) return undefined;
-	return { mimeType: match[1], data: match[2] };
+	const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+	if (!m?.[2]) return undefined;
+	return { mimeType: m[1], data: m[2] };
 }
