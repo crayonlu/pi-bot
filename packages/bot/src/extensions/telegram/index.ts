@@ -9,40 +9,36 @@ function log(...a: unknown[]): void {
 	console.log("[telegram]", ...a);
 }
 
-export interface TelegramExtensionOptions {
-	config: BotConfig;
-	onAbort?: () => void;
-	onNew?: () => void;
-	onCompact?: () => void;
-}
-
-export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtensionOptions): void {
+export default function telegramExtension(
+	pi: ExtensionAPI,
+	opts: { config: BotConfig; onAbort?: () => void; onNew?: () => void; onCompact?: () => void },
+): void {
 	const { config, onAbort, onNew, onCompact } = opts;
-	const token = process.env.TELEGRAM_BOT_TOKEN;
-	if (!token) {
+	const t = process.env.TELEGRAM_BOT_TOKEN;
+	if (!t) {
 		console.error("[telegram] no token");
 		return;
 	}
-	log(`init, token=${token.slice(0, 8)}...`);
-	const bot = new TelegramBot(token);
+	log(`init: ${t.slice(0, 8)}...`);
+	const bot = new TelegramBot(t);
 
-	let chatId: number | undefined;
+	let cid: number | undefined;
 	let busy = false;
-	let wMsgId: number | undefined;
-	let wChatId: number | undefined;
+	let wMid: number | undefined;
+	let wCid: number | undefined;
 	let wLines: string[] = [];
-	let text = "";
+	let agentText = "";
 
-	const wizard = new SetupWizard(bot, config, (c) => Object.assign(config, c));
-	registerReplyTool(pi, { bot, getChatId: () => chatId });
+	const wz = new SetupWizard(bot, config, (c) => Object.assign(config, c));
+	registerReplyTool(pi, { bot, getChatId: () => cid });
 
 	const CMDS: Record<string, (c: number, a: string) => Promise<void>> = {
 		"/start": async (c) => {
-			if (!config.setupComplete) await wizard.start(c);
+			if (!config.setupComplete) await wz.start(c);
 			else await bot.sendMessage(c, "Ready.");
 		},
 		"/config": async (c) => {
-			await wizard.start(c);
+			await wz.start(c);
 		},
 		"/abort": async (c) => {
 			if (busy) {
@@ -70,20 +66,20 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 
 	bot.onMessage(async (msg) => {
 		if (!msg.userId || !isAllowedUser(config, msg.userId)) return;
-		chatId = msg.chatId;
-		if (wizard.active) {
-			if (msg.text) await wizard.handleMessage(msg.chatId, msg.text);
+		cid = msg.chatId;
+		if (wz.active) {
+			if (msg.text) await wz.handleMessage(msg.chatId, msg.text);
 			return;
 		}
 		if (!config.setupComplete) {
-			await wizard.start(msg.chatId);
+			await wz.start(msg.chatId);
 			return;
 		}
 		if (!msg.text) {
 			if (msg.photo?.length) {
 				try {
 					const du = await bot.downloadFile(msg.photo[msg.photo.length - 1].file_id);
-					const p = parseDataUrl(du);
+					const p = parse(du);
 					if (!p) {
 						await bot.sendMessage(msg.chatId, "Img fail");
 						return;
@@ -101,47 +97,48 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 			}
 			return;
 		}
-		const t = msg.text.trim();
-		if (!t) return;
-		const cmd = t.split(/\s/)[0]?.toLowerCase();
+		const tx = msg.text.trim();
+		if (!tx) return;
+		const cmd = tx.split(/\s/)[0]?.toLowerCase();
 		if (cmd && cmd in CMDS) {
-			await CMDS[cmd](msg.chatId, t.slice(cmd.length).trim());
+			await CMDS[cmd](msg.chatId, tx.slice(cmd.length).trim());
 			return;
 		}
 		if (busy) {
-			pi.sendUserMessage(t, { deliverAs: "followUp" });
+			pi.sendUserMessage(tx, { deliverAs: "followUp" });
 			await bot.sendMessage(msg.chatId, "Queued.");
 		} else {
-			pi.sendUserMessage(t);
-			wChatId = msg.chatId;
-			startWorking();
+			pi.sendUserMessage(tx);
+			wCid = msg.chatId;
+			startW();
 		}
 	});
+
 	function ch(): number {
-		return wChatId ?? chatId ?? 0;
+		return wCid ?? cid ?? 0;
 	}
 
-	async function startWorking(): Promise<void> {
+	async function startW(): Promise<void> {
 		wLines = [];
 		try {
-			wMsgId = await bot.sendMessage(ch(), "---");
-			log(`startWorking: wMsgId=${wMsgId} wChatId=${wChatId}`);
+			wMid = await bot.sendMessage(ch(), "---");
 		} catch {
-			log("startWorking FAILED");
 			/* ok */
 		}
 	}
-	async function appendWorking(line: string): Promise<void> {
+
+	async function app(line: string): Promise<void> {
 		wLines.push(line);
 		if (wLines.length > 10) wLines.shift();
-		if (wChatId && wMsgId)
-			bot.editMessage(wChatId, wMsgId, wLines.join("\n")).catch((e) => log("edit FAIL:", e.message));
+		if (wCid && wMid) bot.editMessage(wCid, wMid, wLines.join("\n")).catch(() => {});
 	}
+
+	pi.on("agent_start", () => {
+		busy = true;
+	});
 	pi.on("tool_execution_start", (e) => {
 		const ev = e as unknown as { toolName?: string; args?: unknown };
-		const line = `${ev.toolName ?? "?"} ${toolSummary(ev.toolName ?? "?", ev.args)}`;
-		log("tool:", line);
-		appendWorking(line);
+		app(`[tool] ${ev.toolName ?? "?"} ${sum(ev.toolName ?? "?", ev.args)}`);
 	});
 	pi.on("message_end", (e) => {
 		const ev = e as unknown as {
@@ -149,32 +146,27 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 		};
 		if (ev.message?.role !== "assistant" || !ev.message?.content) return;
 		for (const c of ev.message.content) {
-			if (c?.type === "text") text += c.text ?? "";
-			else if (c?.type === "thinking" && c?.thinking) appendWorking(`think: ${trunc(c.thinking, 80)}`);
+			if (c?.type === "text") agentText += c.text ?? "";
+			else if (c?.type === "thinking" && c?.thinking) app(`[think] ${tr(c.thinking, 80)}`);
 		}
 	});
 	pi.on("turn_end", async (e) => {
 		const ev = e as unknown as { message?: { usage?: { input: number; output: number } } };
 		if (ev.message?.usage) {
-			const t = (ev.message.usage.input ?? 0) + (ev.message.usage.output ?? 0);
-			log("turn tok:", t);
-			await appendWorking(`${t.toLocaleString()} tok`);
+			const tk = (ev.message.usage.input ?? 0) + (ev.message.usage.output ?? 0);
+			await app(`[done] ${tk.toLocaleString()} tok`);
 		}
 	});
 	pi.on("agent_end", () => {
-		log(`agent_end: textLen=${text.length} chatId=${ch()}`);
-		if (text.trim()) {
-			bot.sendMarkdown(ch(), text)
-				.then(() => log("sendMarkdown OK"))
-				.catch((err) => log("sendMarkdown FAIL:", err.message));
-		}
-		text = "";
+		if (agentText.trim()) bot.sendMarkdown(ch(), agentText).catch(() => {});
+		agentText = "";
 		busy = false;
-		if (wMsgId) {
-			bot.editMessage(wChatId ?? 0, wMsgId, [...wLines, "- done"].join("\n")).catch(() => {});
+		if (wMid) {
+			wLines.push("- done");
+			bot.editMessage(wCid ?? 0, wMid, wLines.join("\n")).catch(() => {});
 		}
-		wMsgId = undefined;
-		wChatId = undefined;
+		wMid = undefined;
+		wCid = undefined;
 		wLines = [];
 	});
 	pi.on("session_shutdown", () => {
@@ -188,12 +180,12 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 	log("ready");
 }
 
-function toolSummary(n: string, a: unknown): string {
+function sum(n: string, a: unknown): string {
 	if (!a || typeof a !== "object") return n;
 	const o = a as Record<string, unknown>;
 	switch (n) {
 		case "bash":
-			return typeof o.command === "string" ? trunc(o.command, 60) : n;
+			return typeof o.command === "string" ? tr(o.command, 60) : n;
 		case "read":
 		case "edit":
 		case "write":
@@ -202,14 +194,14 @@ function toolSummary(n: string, a: unknown): string {
 			return n;
 	}
 }
-function trunc(s: string, m: number): string {
+function tr(s: string, m: number): string {
 	return s.length <= m ? s : `${s.slice(0, m - 3)}...`;
 }
-interface PD {
+interface P {
 	mimeType: string;
 	data: string;
 }
-function parseDataUrl(u: string): PD | undefined {
+function parse(u: string): P | undefined {
 	const m = u.match(/^data:([^;]+);base64,(.+)$/);
 	return m?.[2] ? { mimeType: m[1], data: m[2] } : undefined;
 }
