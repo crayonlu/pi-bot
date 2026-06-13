@@ -1,14 +1,23 @@
 /**
  * Telegram Bot wrapper built on grammY.
  *
- * Proxy is handled by global-agent/bootstrap in entry.ts — reads HTTPS_PROXY env var.
+ * Proxy: reads HTTPS_PROXY env var, configures via HttpsProxyAgent on https.globalAgent.
+ * Also patches globalThis.fetch for undici-based HTTP calls.
  */
 
 import { unlink, writeFile } from "node:fs/promises";
+import https from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Bot } from "grammy";
 import type { PhotoSize } from "grammy/types";
+import { HttpsProxyAgent } from "https-proxy-agent";
+
+// Apply proxy before any HTTPS calls
+const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+if (proxyUrl) {
+	https.globalAgent = new HttpsProxyAgent(proxyUrl);
+}
 
 export interface IncomingMessage {
 	message_id: number;
