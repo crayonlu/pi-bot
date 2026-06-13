@@ -72,8 +72,15 @@ export default function browserExtension(pi: ExtensionAPI): void {
 			script: Type.Optional(Type.String({ description: "JavaScript to evaluate (for evaluate)" })),
 		}),
 		execute: async (_toolCallId, params) => {
-			console.log(`[browser] action=${params.action}`);
 			try {
+				import("node:fs/promises").then((fs) =>
+					fs
+						.appendFile(
+							"/tmp/browser.log",
+							`${new Date().toISOString()} action=${(params as Record<string, unknown>).action}\n`,
+						)
+						.catch(() => {}),
+				);
 				const result = await executeAction(params);
 				return {
 					content: [{ type: "text" as const, text: result }],
