@@ -125,7 +125,9 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 		wLines = [];
 		try {
 			wMsgId = await bot.sendMessage(ch(), "---");
+			log(`startWorking: wMsgId=${wMsgId} wChatId=${wChatId}`);
 		} catch {
+			log("startWorking FAILED");
 			/* ok */
 		}
 	}
