@@ -57,16 +57,15 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 		if (busy) { pi.sendUserMessage(t, { deliverAs: "followUp" }); await bot.sendMessage(msg.chatId, "Queued."); }
 		else { pi.sendUserMessage(t); wChatId = msg.chatId; startWorking(); }
 	});
+	function ch(): number { return wChatId ?? chatId ?? 0; }
 
-	async function ch(): number { return wChatId ?? chatId ?? 0; }
-
+	async function startWorking(): Promise<void> {
 		wLines = []; try { wMsgId = await bot.sendMessage(ch(), "---"); } catch { /* ok */ }
 	}
 	async function appendWorking(line: string): Promise<void> {
 		wLines.push(line); if (wLines.length > 10) wLines.shift();
 		if (wChatId && wMsgId) bot.editMessage(wChatId, wMsgId, wLines.join("\n")).catch(() => {});
 	}
-	function ch(): number { return wChatId ?? chatId ?? 0; }
 	pi.on("tool_execution_start", (e) => {
 		const ev = e as unknown as { toolName?: string; args?: unknown };
 		appendWorking(`${ev.toolName ?? "?"} ${toolSummary(ev.toolName ?? "?", ev.args)}`);
