@@ -29,6 +29,7 @@ async function main(): Promise<void> {
 	const sessionDir = getSessionDir();
 	await mkdir("/workspace", { recursive: true }).catch((err) => console.error("[pi-bot] workspace:", err.message));
 	await writeFile("/workspace/memory.md", "", { flag: "a" }).catch(() => {});
+	const sessionRef: { current: AgentSession | undefined } = { current: undefined };
 	const extensionFactories: ExtensionFactory[] = [
 		(pi) => {
 			telegramExtension(pi, {
