@@ -25,10 +25,12 @@ async function getPage(): Promise<Page> {
 		browser = await chromium.launch({ headless: true, timeout: 30_000 });
 	}
 	if (!page || page.isClosed()) {
+		const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
 		const context = await browser.newContext({
 			viewport: { width: 1280, height: 720 },
 			userAgent:
 				"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+			...(proxy ? { proxy: { server: proxy } } : {}),
 		});
 		page = await context.newPage();
 	}
