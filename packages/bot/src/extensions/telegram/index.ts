@@ -129,7 +129,6 @@ export default function telegramExtension(
 
 	async function app(line: string): Promise<void> {
 		wLines.push(line);
-		if (wLines.length > 10) wLines.shift();
 		if (wCid && wMid) bot.editMessage(wCid, wMid, wLines.join("\n")).catch(() => {});
 	}
 
