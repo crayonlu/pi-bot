@@ -45,15 +45,22 @@ async function main(): Promise<void> {
 	const sessionRef: { current: AgentSession | undefined } = { current: undefined };
 
 	const extensionFactories: ExtensionFactory[] = [
-		(pi) =>
-			telegramExtension(pi, {
-				config,
-				onAbort: () => sessionRef.current?.agent.abort(),
-				onNew: () => {
-					if (sessionRef.current) sessionRef.current.agent.state.messages = [];
-				},
-				onCompact: () => {},
-			}),
+		(pi) => {
+			console.log("[pi-bot] loading telegram extension...");
+			try {
+				telegramExtension(pi, {
+					config,
+					onAbort: () => sessionRef.current?.agent.abort(),
+					onNew: () => {
+						if (sessionRef.current) sessionRef.current.agent.state.messages = [];
+					},
+					onCompact: () => {},
+				});
+				console.log("[pi-bot] telegram extension loaded");
+			} catch (e) {
+				console.error("[pi-bot] telegram extension FAILED:", e instanceof Error ? e.message : e);
+			}
+		},
 		(pi) => personaPromptExtension(pi, config),
 		(pi) => browserExtension(pi),
 	];
