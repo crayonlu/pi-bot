@@ -1,0 +1,27 @@
+{
+	"name": "@crayonlu/pi-bot",
+	"version": "0.1.0",
+	"description": "Server agent daemon — Telegram-controlled AI agent for server operations",
+	"type": "module",
+	"main": "./dist/entry.js",
+	"types": "./dist/entry.d.ts",
+	"bin": {
+		"pi-bot": "dist/entry.js"
+	},
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"build": "tsgo -p tsconfig.build.json",
+		"start": "node --experimental-strip-types src/entry.ts"
+	},
+	"dependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"grammy": "1.35.0",
+		"playwright": "1.60.0"
+	},
+	"devDependencies": {
+		"shx": "0.4.0"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	}
+}
