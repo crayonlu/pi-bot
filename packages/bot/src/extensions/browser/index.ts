@@ -72,6 +72,7 @@ export default function browserExtension(pi: ExtensionAPI): void {
 			script: Type.Optional(Type.String({ description: "JavaScript to evaluate (for evaluate)" })),
 		}),
 		execute: async (_toolCallId, params) => {
+			console.log(`[browser] action=${params.action}`);
 			try {
 				const result = await executeAction(params);
 				return {
