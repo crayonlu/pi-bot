@@ -18,11 +18,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BotConfig } from "../../config.ts";
 
 export default function personaPromptExtension(pi: ExtensionAPI, config: BotConfig): void {
-	pi.on("before_agent_start", (event) => {
+	pi.on("before_agent_start", () => {
 		if (!config.setupComplete || !config.persona) return;
-
 		const platform = buildPlatformContext();
-		event.systemPrompt = `${config.persona}\n\n${platform}`;
+		return { systemPrompt: `${config.persona}\n\n${platform}` };
 	});
 }
 
