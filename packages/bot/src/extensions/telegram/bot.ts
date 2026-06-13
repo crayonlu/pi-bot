@@ -36,6 +36,7 @@ function sleep(ms: number): Promise<void> {
 export class TelegramBot {
 	readonly raw: Bot;
 	private handler: MessageHandler | undefined;
+	private callbackHandler: ((data: string, chatId: number, userId: number) => void) | undefined;
 
 	constructor(token: string) {
 		this.raw = new Bot(token);
@@ -43,6 +44,9 @@ export class TelegramBot {
 
 	onMessage(h: MessageHandler): void {
 		this.handler = h;
+	}
+	onCallback(h: (data: string, chatId: number, userId: number) => void): void {
+		this.callbackHandler = h;
 	}
 
 	async start(): Promise<void> {
@@ -58,6 +62,14 @@ export class TelegramBot {
 					photo: "photo" in msg ? (msg.photo as PhotoSize[]) : undefined,
 					caption: "caption" in msg ? (msg.caption as string) : undefined,
 				});
+			});
+		}
+		if (this.callbackHandler) {
+			this.raw.on("callback_query:data", async (ctx) => {
+				const cq = ctx.callbackQuery;
+				if (!cq.data) return;
+				await ctx.answerCallbackQuery();
+				this.callbackHandler!(cq.data, cq.message?.chat.id ?? 0, cq.from.id);
 			});
 		}
 		this.raw.catch((err) => {
@@ -101,6 +113,16 @@ export class TelegramBot {
 			lastId = msg.message_id;
 		}
 		return lastId;
+	}
+
+	async sendInlineKeyboard(
+		chatId: number,
+		text: string,
+		buttons: Array<{ text: string; data: string }>,
+	): Promise<number> {
+		const keyboard = { inline_keyboard: buttons.map((b) => [{ text: b.text, callback_data: b.data }]) };
+		const msg = await this.raw.api.sendMessage(chatId, text, { reply_markup: keyboard });
+		return msg.message_id;
 	}
 
 	// Rate-limited editMessage: max 15 edits/min (Telegram limit ~20/min).
@@ -163,18 +185,6 @@ export class TelegramBot {
 			}
 		}
 		const msg = await this.raw.api.sendPhoto(chatId, image, { caption });
-		return msg.message_id;
-	}
-
-	async sendInlineKeyboard(
-		chatId: number,
-		text: string,
-		buttons: Array<{ text: string; data: string }>,
-	): Promise<number> {
-		const keyboard = {
-			inline_keyboard: buttons.map((b) => [{ text: b.text, callback_data: b.data }]),
-		};
-		const msg = await this.raw.api.sendMessage(chatId, text, { reply_markup: keyboard });
 		return msg.message_id;
 	}
 
