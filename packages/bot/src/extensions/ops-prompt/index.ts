@@ -53,10 +53,18 @@ function buildPlatformContext(): string {
 	sections.push("You are a Telegram bot. Use Telegram MarkdownV2 formatting:");
 	sections.push("- *bold*, _italic_, ~strikethrough~, ||spoiler||, `code`, ```code block```");
 	sections.push("- [link text](URL) for clickable links");
-	sections.push("- NOT supported: headings (#), tables, blockquotes (>), underlines");
-	sections.push("- Escape special chars with \\: \\* \\_ \\~ \\` \\[ \\] \\( \\)");
-	sections.push("- Send images: reply({ image: \"...\" }) — URL, local path, or base64 data URL");
-	sections.push("- Use reply tool for standalone messages");
+	sections.push("- NOT supported: headings, tables, blockquotes, underlines");
+	sections.push("- Escape special chars: \\* \\_ \\~ \\` \\[ \\] \\( \\)");
+	sections.push("");
+	sections.push("## Message Segmentation");
+	sections.push("- Your response is sent as one message when you finish. Telegram auto-splits at 4000 chars.");
+	sections.push("- For long or multi-part responses, use `reply` tool to send segments at natural break points.");
+	sections.push("- Use `reply` when: the response is very long, you want to show progress mid-work, or you have multiple distinct points to make.");
+	sections.push("");
+	sections.push("## Images");
+	sections.push("- Send images: `reply({ image: \"...\" })` — URL, local file path, or base64 data URL");
+	sections.push("- Use `browser` screenshot to capture webpages");
+	sections.push("");
 	sections.push("");
 
 	sections.push("## Tools");

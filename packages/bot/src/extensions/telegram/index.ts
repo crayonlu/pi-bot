@@ -83,55 +83,52 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 			workingChatId = msg.chatId;
 		}
 	});
-
 	async function chat(): number {
 		return workingChatId ?? currentChatId ?? 0;
 	}
 
-	pi.on("agent_start", () => { isAgentBusy = true; lastFlush = 0; });
+	pi.on("agent_start", () => {
+		isAgentBusy = true;
+	});
 
-	// Assistant text: buffer and send as separate messages
+	// Accumulate assistant text — sent once at agent_end. Zero segments via reply tool.
+	let fullResponse = "";
+
 	pi.on("message_end", (e) => {
 		const event = e as unknown as { message?: { role?: string; content?: Array<{ type: string; text?: string }> } };
 		if (event.message?.role !== "assistant" || !event.message.content) return;
 		const text = event.message.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map(c => c.text).join("\n");
 		if (!text) return;
-		const now = Date.now();
-		if (now - lastFlush > FLUSH_INTERVAL || text.length > 500) {
-			bot.sendMessage(chat(), text).catch(() => {});
-			lastFlush = now;
-		}
+		fullResponse += text;
 	});
 
-	// Tool execution: send as separate brief messages immediately
+	// Tool execution: brief inline notification
 	pi.on("tool_execution_start", (e) => {
 		const event = e as unknown as { toolName?: string; args?: unknown };
 		const name = event.toolName ?? "?";
 		const summary = toolSummary(name, event.args);
-		bot.sendMessage(chat(), `<code>${escape(name)} ${escape(summary)}</code>`).catch(() => {});
+		bot.sendMessage(chat(), `\\- ${escapeHtml(name)} ${escapeHtml(summary)}`).catch(() => {});
 	});
 
-	pi.on("tool_execution_end", (e) => {
-		const event = e as unknown as { toolCallId?: string; isError?: boolean; result?: unknown };
-		const status = event.isError ? "\u2717" : "\u2713";
-		bot.sendMessage(chat(), `${status} Done`).catch(() => {});
-	});
-
-	// Turn end: send token summary
+	// Turn end: token count
 	pi.on("turn_end", (e) => {
 		const event = e as unknown as { message?: { usage?: { input: number; output: number; cacheRead?: number } } };
 		const usage = event.message?.usage;
 		if (usage) {
 			const total = (usage.input ?? 0) + (usage.output ?? 0);
-			bot.sendMessage(chat(), `\u2139 ${total.toLocaleString()} tokens`).catch(() => {});
+			bot.sendMessage(chat(), `_${total.toLocaleString()} tokens_`).catch(() => {});
 		}
 	});
 
+	// Agent done: send accumulated response. Zero may have already sent parts via reply.
 	pi.on("agent_end", () => {
+		if (fullResponse.trim()) {
+			bot.sendMessage(chat(), fullResponse).catch(() => {});
+		}
+		fullResponse = "";
 		isAgentBusy = false;
 		workingChatId = undefined;
 	});
-
 	pi.on("session_shutdown", () => { bot.stop(); });
 
 	console.log("[telegram] starting long-polling...");
