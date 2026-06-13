@@ -1,20 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * pi-bot: Server agent daemon.
- *
- * Runs a persistent pi agent session with Telegram as the UI.
- * The agent has full server access (cwd: /).
- *
- * Proxy: HTTPS_PROXY env var → node-fetch-compatible global override.
- *
- * Usage:
- *   TELEGRAM_BOT_TOKEN=... node packages/bot/src/entry.ts
- *
- * Config: ~/.pi/bot/config.json (created by /start)
- * Sessions: ~/.pi/bot/sessions/
- */
-
 import { mkdir } from "node:fs/promises";
 import type { AgentSession, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
@@ -31,7 +16,7 @@ import telegramExtension from "./extensions/telegram/index.ts";
 async function main(): Promise<void> {
 	const token = process.env.TELEGRAM_BOT_TOKEN;
 	if (!token) {
-		console.error("TELEGRAM_BOT_TOKEN environment variable is required");
+		console.error("TELEGRAM_BOT_TOKEN required");
 		process.exit(1);
 	}
 
@@ -39,7 +24,6 @@ async function main(): Promise<void> {
 	const cwd = "/";
 	const agentDir = getConfigDir();
 	const sessionDir = getSessionDir();
-
 	await mkdir("/workspace", { recursive: true }).catch(() => {});
 
 	const sessionRef: { current: AgentSession | undefined } = { current: undefined };
@@ -66,12 +50,7 @@ async function main(): Promise<void> {
 	];
 
 	const settingsManager = SettingsManager.create(cwd, agentDir);
-	const resourceLoader = new DefaultResourceLoader({
-		cwd,
-		agentDir,
-		settingsManager,
-		extensionFactories,
-	});
+	const resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager, extensionFactories });
 	await resourceLoader.reload();
 
 	const sessionManager = SessionManager.create(cwd, sessionDir);
@@ -84,7 +63,6 @@ async function main(): Promise<void> {
 		tools: ["bash", "read", "write", "edit", "grep", "find", "ls"],
 	});
 	sessionRef.current = session;
-
 	await session.bindExtensions({ mode: "rpc" });
 
 	const shutdown = () => {
@@ -94,12 +72,16 @@ async function main(): Promise<void> {
 	};
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
+	process.on("uncaughtException", (err) => {
+		console.error("[pi-bot] uncaught:", err.message);
+		process.exit(1);
+	});
+	process.on("unhandledRejection", (reason) => {
+		console.error("[pi-bot] unhandled rejection:", reason instanceof Error ? reason.message : String(reason));
+	});
 
-	if (config.setupComplete) {
-		console.log("[pi-bot] ready");
-	} else {
-		console.log("[pi-bot] ready — send /start to configure persona");
-	}
+	if (config.setupComplete) console.log("[pi-bot] ready");
+	else console.log("[pi-bot] ready — send /start to configure persona");
 }
 
 main().catch((err) => {
