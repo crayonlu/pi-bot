@@ -132,11 +132,14 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 	async function appendWorking(line: string): Promise<void> {
 		wLines.push(line);
 		if (wLines.length > 10) wLines.shift();
-		if (wChatId && wMsgId) bot.editMessage(wChatId, wMsgId, wLines.join("\n")).catch(() => {});
+		if (wChatId && wMsgId)
+			bot.editMessage(wChatId, wMsgId, wLines.join("\n")).catch((e) => log("edit FAIL:", e.message));
 	}
 	pi.on("tool_execution_start", (e) => {
 		const ev = e as unknown as { toolName?: string; args?: unknown };
-		appendWorking(`${ev.toolName ?? "?"} ${toolSummary(ev.toolName ?? "?", ev.args)}`);
+		const line = `${ev.toolName ?? "?"} ${toolSummary(ev.toolName ?? "?", ev.args)}`;
+		log("tool:", line);
+		appendWorking(line);
 	});
 	pi.on("message_end", (e) => {
 		const ev = e as unknown as { message?: { role?: string; content?: Array<{ type: string; text?: string }> } };
@@ -149,6 +152,7 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 		const ev = e as unknown as { message?: { usage?: { input: number; output: number } } };
 		if (ev.message?.usage) {
 			const t = (ev.message.usage.input ?? 0) + (ev.message.usage.output ?? 0);
+			log("turn tok:", t);
 			await appendWorking(`${t.toLocaleString()} tok`);
 		}
 	});
