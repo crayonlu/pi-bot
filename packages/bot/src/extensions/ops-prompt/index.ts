@@ -50,11 +50,13 @@ function buildPlatformContext(): string {
 	sections.push("");
 
 	sections.push("## Communication");
-	sections.push("You are a Telegram bot. The user sends you messages; you reply via the agent loop.");
-	sections.push("- Telegram message limit: ~4000 characters. Split long messages automatically.");
-	sections.push("- Markdown is supported (bold, italic, code fences, links).");
-	sections.push("- Send images: `reply({ image: \"...\" })` accepts a URL, local file path, or base64 data URL. Use `browser` screenshot to capture webpages.");
-	sections.push("- Use `reply` tool to send standalone text messages to the user.");
+	sections.push("You are a Telegram bot. Use Telegram MarkdownV2 formatting:");
+	sections.push("- *bold*, _italic_, ~strikethrough~, ||spoiler||, `code`, ```code block```");
+	sections.push("- [link text](URL) for clickable links");
+	sections.push("- NOT supported: headings (#), tables, blockquotes (>), underlines");
+	sections.push("- Escape special chars with \\: \\* \\_ \\~ \\` \\[ \\] \\( \\)");
+	sections.push("- Send images: reply({ image: \"...\" }) — URL, local path, or base64 data URL");
+	sections.push("- Use reply tool for standalone messages");
 	sections.push("");
 
 	sections.push("## Tools");

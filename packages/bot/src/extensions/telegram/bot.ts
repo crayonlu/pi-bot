@@ -85,20 +85,20 @@ export class TelegramBot {
 	async sendMessage(chatId: number, text: string): Promise<number> {
 		const maxLen = 4000;
 		if (text.length <= maxLen) {
-			const msg = await this.raw.api.sendMessage(chatId, text, { parse_mode: "HTML" });
+			const msg = await this.raw.api.sendMessage(chatId, text, { parse_mode: "MarkdownV2" });
 			return msg.message_id;
 		}
 		let lastId = 0;
 		for (let i = 0; i < text.length; i += maxLen) {
 			const chunk = text.slice(i, i + maxLen);
-			const msg = await this.raw.api.sendMessage(chatId, chunk, { parse_mode: "HTML" });
+			const msg = await this.raw.api.sendMessage(chatId, chunk, { parse_mode: "MarkdownV2" });
 			lastId = msg.message_id;
 		}
 		return lastId;
 	}
 
 	async editMessage(chatId: number, messageId: number, text: string): Promise<void> {
-		await this.raw.api.editMessageText(chatId, messageId, text, { parse_mode: "HTML" });
+		await this.raw.api.editMessageText(chatId, messageId, text, { parse_mode: "MarkdownV2" });
 	}
 
 	async sendPhoto(chatId: number, image: string, caption?: string): Promise<number> {
@@ -108,14 +108,14 @@ export class TelegramBot {
 				const tmpPath = join(tmpdir(), `pi-bot-${Date.now()}.png`);
 				try {
 					await writeFile(tmpPath, Buffer.from(match[1], "base64"));
-					const msg = await this.raw.api.sendPhoto(chatId, tmpPath, { caption, parse_mode: "HTML" });
+					const msg = await this.raw.api.sendPhoto(chatId, tmpPath, { caption, parse_mode: "MarkdownV2" });
 					return msg.message_id;
 				} finally {
 					unlink(tmpPath).catch(() => {});
 				}
 			}
 		}
-		const msg = await this.raw.api.sendPhoto(chatId, image, { caption, parse_mode: "HTML" });
+		const msg = await this.raw.api.sendPhoto(chatId, image, { caption, parse_mode: "MarkdownV2" });
 		return msg.message_id;
 	}
 
