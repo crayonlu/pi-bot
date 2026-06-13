@@ -8,6 +8,7 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 import { getConfigDir, getSessionDir, loadConfig } from "./config.ts";
 import browserExtension from "./extensions/browser/index.ts";
 import personaPromptExtension from "./extensions/ops-prompt/index.ts";
@@ -21,6 +22,10 @@ async function main(): Promise<void> {
 	}
 
 	const config = await loadConfig();
+
+	// Global HTTP proxy via Undici — covers OpenAI SDK, native fetch, etc.
+	setGlobalDispatcher(new EnvHttpProxyAgent({ allowH2: false }));
+
 	const cwd = "/";
 	const agentDir = getConfigDir();
 	const sessionDir = getSessionDir();
@@ -30,20 +35,14 @@ async function main(): Promise<void> {
 
 	const extensionFactories: ExtensionFactory[] = [
 		(pi) => {
-			console.log("[pi-bot] loading telegram extension...");
-			try {
-				telegramExtension(pi, {
-					config,
-					onAbort: () => sessionRef.current?.agent.abort(),
-					onNew: () => {
-						if (sessionRef.current) sessionRef.current.agent.state.messages = [];
-					},
-					onCompact: () => {},
-				});
-				console.log("[pi-bot] telegram extension loaded");
-			} catch (e) {
-				console.error("[pi-bot] telegram extension FAILED:", e instanceof Error ? e.message : e);
-			}
+			telegramExtension(pi, {
+				config,
+				onAbort: () => sessionRef.current?.agent.abort(),
+				onNew: () => {
+					if (sessionRef.current) sessionRef.current.agent.state.messages = [];
+				},
+				onCompact: () => {},
+			});
 		},
 		(pi) => personaPromptExtension(pi, config),
 		(pi) => browserExtension(pi),
@@ -72,13 +71,6 @@ async function main(): Promise<void> {
 	};
 	process.on("SIGTERM", shutdown);
 	process.on("SIGINT", shutdown);
-	process.on("uncaughtException", (err) => {
-		console.error("[pi-bot] uncaught:", err.message);
-		process.exit(1);
-	});
-	process.on("unhandledRejection", (reason) => {
-		console.error("[pi-bot] unhandled rejection:", reason instanceof Error ? reason.message : String(reason));
-	});
 
 	if (config.setupComplete) console.log("[pi-bot] ready");
 	else console.log("[pi-bot] ready — send /start to configure persona");
