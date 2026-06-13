@@ -184,6 +184,8 @@ function sum(n: string, a: unknown): string {
 	if (!a || typeof a !== "object") return n;
 	const o = a as Record<string, unknown>;
 	switch (n) {
+		case "browser":
+			return typeof o.action === "string" ? `${o.action} ${tr(String(o.url ?? ""), 50)}` : n;
 		case "bash":
 			return typeof o.command === "string" ? tr(o.command, 60) : n;
 		case "read":
@@ -197,11 +199,7 @@ function sum(n: string, a: unknown): string {
 function tr(s: string, m: number): string {
 	return s.length <= m ? s : `${s.slice(0, m - 3)}...`;
 }
-interface P {
-	mimeType: string;
-	data: string;
-}
-function parse(u: string): P | undefined {
-	const m = u.match(/^data:([^;]+);base64,(.+)$/);
+function parse(u: string): { mimeType: string; data: string } | undefined {
+	const m = /^data:([^;]+);base64,(.+)$/.exec(u);
 	return m?.[2] ? { mimeType: m[1], data: m[2] } : undefined;
 }
