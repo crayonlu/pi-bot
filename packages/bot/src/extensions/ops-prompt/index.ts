@@ -18,8 +18,21 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BotConfig } from "../../config.ts";
 
 export default function personaPromptExtension(pi: ExtensionAPI, config: BotConfig): void {
-	pi.on("before_agent_start", () => {
+	let isImageModel = false;
+
+	pi.on("before_agent_start", async (event) => {
 		if (!config.setupComplete || !config.persona) return;
+
+		// Auto-switch model: MiMo for images, DeepSeek V4 Flash for text
+		const hasImages = event.images && event.images.length > 0;
+		if (hasImages && !isImageModel) {
+			await pi.setModel({ provider: "ppio", id: "xiaomimimo/mimo-v2.5" } as Parameters<typeof pi.setModel>[0]);
+			isImageModel = true;
+		} else if (!hasImages && isImageModel) {
+			await pi.setModel({ provider: "ppio", id: "deepseek/deepseek-v4-flash" } as Parameters<typeof pi.setModel>[0]);
+			isImageModel = false;
+		}
+
 		const platform = buildPlatformContext();
 		return { systemPrompt: `${config.persona}\n\n${platform}` };
 	});
