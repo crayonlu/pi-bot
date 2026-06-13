@@ -144,10 +144,13 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 		appendWorking(line);
 	});
 	pi.on("message_end", (e) => {
-		const ev = e as unknown as { message?: { role?: string; content?: Array<{ type: string; text?: string }> } };
+		const ev = e as unknown as {
+			message?: { role?: string; content?: Array<{ type: string; text?: string; thinking?: string }> };
+		};
 		if (ev.message?.role !== "assistant" || !ev.message?.content) return;
 		for (const c of ev.message.content) {
 			if (c?.type === "text") text += c.text ?? "";
+			else if (c?.type === "thinking" && c?.thinking) appendWorking(`think: ${trunc(c.thinking, 80)}`);
 		}
 	});
 	pi.on("turn_end", async (e) => {
