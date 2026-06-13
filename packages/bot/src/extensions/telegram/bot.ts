@@ -1,8 +1,8 @@
 /**
  * Telegram Bot wrapper built on grammY.
  *
- * Proxy: reads HTTPS_PROXY env var, configures via HttpsProxyAgent on https.globalAgent.
- * Also patches globalThis.fetch for undici-based HTTP calls.
+ * Proxy: intercepts https.Agent constructor via Proxy to route Grammy's node-fetch through proxy.
+ * Grammy creates new https.Agent({keepAlive:true}) internally — we replace the class.
  */
 
 import { unlink, writeFile } from "node:fs/promises";
@@ -13,10 +13,16 @@ import { Bot } from "grammy";
 import type { PhotoSize } from "grammy/types";
 import { HttpsProxyAgent } from "https-proxy-agent";
 
-// Apply proxy before any HTTPS calls
+// Intercept https.Agent constructor. Grammy creates new https.Agent instances
+// internally (via baseFetchConfig) and ignores https.globalAgent.
 const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
 if (proxyUrl) {
-	https.globalAgent = new HttpsProxyAgent(proxyUrl);
+	const proxyAgent = new HttpsProxyAgent(proxyUrl);
+	https.Agent = new Proxy(https.Agent, {
+		construct() {
+			return proxyAgent;
+		},
+	});
 }
 
 export interface IncomingMessage {
