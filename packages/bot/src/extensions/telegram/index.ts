@@ -145,7 +145,7 @@ export default function telegramExtension(pi: ExtensionAPI, options: TelegramExt
 	pi.on("agent_end", () => {
 		log(`event: agent_end response="${fullResponse.slice(0, 80)}"`);
 		if (fullResponse.trim()) {
-			bot.sendMessage(chat(), fullResponse).catch(() => {});
+			bot.sendMarkdown(chat(), fullResponse).catch(() => {});
 		}
 		fullResponse = "";
 		isAgentBusy = false;

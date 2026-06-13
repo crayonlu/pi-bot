@@ -85,6 +85,21 @@ export class TelegramBot {
 	async sendMessage(chatId: number, text: string): Promise<number> {
 		const maxLen = 4000;
 		if (text.length <= maxLen) {
+			const msg = await this.raw.api.sendMessage(chatId, text);
+			return msg.message_id;
+		}
+		let lastId = 0;
+		for (let i = 0; i < text.length; i += maxLen) {
+			const chunk = text.slice(i, i + maxLen);
+			const msg = await this.raw.api.sendMessage(chatId, chunk);
+			lastId = msg.message_id;
+		}
+		return lastId;
+	}
+
+	async sendMarkdown(chatId: number, text: string): Promise<number> {
+		const maxLen = 4000;
+		if (text.length <= maxLen) {
 			const msg = await this.raw.api.sendMessage(chatId, text, { parse_mode: "MarkdownV2" });
 			return msg.message_id;
 		}
@@ -95,10 +110,6 @@ export class TelegramBot {
 			lastId = msg.message_id;
 		}
 		return lastId;
-	}
-
-	async editMessage(chatId: number, messageId: number, text: string): Promise<void> {
-		await this.raw.api.editMessageText(chatId, messageId, text, { parse_mode: "MarkdownV2" });
 	}
 
 	async sendPhoto(chatId: number, image: string, caption?: string): Promise<number> {
