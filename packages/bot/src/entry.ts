@@ -71,6 +71,9 @@ async function main(): Promise<void> {
 
 	if (config.setupComplete) console.log("[pi-bot] ready");
 	else console.log("[pi-bot] ready — send /start to configure persona");
+
+	// Keep process alive indefinitely — grammy long-polling manages the connection
+	await new Promise(() => {});
 }
 
 main().catch((err) => {
