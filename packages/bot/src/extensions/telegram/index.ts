@@ -60,8 +60,7 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 
 	async function ch(): number { return wChatId ?? chatId ?? 0; }
 
-	async function startWorking(): Promise<void> {
-		wLines = []; try { wMsgId = await bot.sendMessage(ch(), "\\- \\- \\-"); } catch { /* ok */ }
+		wLines = []; try { wMsgId = await bot.sendMessage(ch(), "---"); } catch { /* ok */ }
 	}
 	async function appendWorking(line: string): Promise<void> {
 		wLines.push(line); if (wLines.length > 10) wLines.shift();
@@ -87,7 +86,7 @@ export default function telegramExtension(pi: ExtensionAPI, opts: TelegramExtens
 			bot.sendMarkdown(ch(), text).then(() => log("sendMarkdown OK")).catch((err) => log("sendMarkdown FAIL:", err.message));
 		}
 		text = ""; busy = false;
-		if (wMsgId) { bot.editMessage(wChatId ?? 0, wMsgId, "\\- done").catch(() => {}); }
+		if (wMsgId) { bot.editMessage(wChatId ?? 0, wMsgId, "- done").catch(() => {}); }
 		wMsgId = undefined; wChatId = undefined; wLines = [];
 	});
 	pi.on("session_shutdown", () => { bot.stop(); });
