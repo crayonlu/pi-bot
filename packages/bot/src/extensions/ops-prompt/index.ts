@@ -59,10 +59,12 @@ function buildPlatformContext(): string {
 	sections.push("## Message Segmentation");
 	sections.push("- Your response is sent as one message when you finish. Telegram auto-splits at 4000 chars.");
 	sections.push("- For long or multi-part responses, use `reply` tool to send segments at natural break points.");
-	sections.push("- Use `reply` when: the response is very long, you want to show progress mid-work, or you have multiple distinct points to make.");
+	sections.push(
+		"- Use `reply` when: the response is very long, you want to show progress mid-work, or you have multiple distinct points to make.",
+	);
 	sections.push("");
 	sections.push("## Images");
-	sections.push("- Send images: `reply({ image: \"...\" })` — URL, local file path, or base64 data URL");
+	sections.push('- Send images: `reply({ image: "..." })` — URL, local file path, or base64 data URL');
 	sections.push("- Use `browser` screenshot to capture webpages");
 	sections.push("");
 	sections.push("");
