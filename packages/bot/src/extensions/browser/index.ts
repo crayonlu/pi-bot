@@ -107,7 +107,7 @@ async function executeAction(params: BrowserParams): Promise<string> {
 	switch (params.action) {
 		case "goto": {
 			if (!params.url) return "Error: url is required for goto";
-			const resp = await p.goto(params.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+			const resp = await p.goto(params.url, { waitUntil: "domcontentloaded", timeout: 15_000 });
 			const status = resp?.status() ?? 0;
 			const title = await p.title();
 			const text = await extractPageText(p);
