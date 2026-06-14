@@ -36,6 +36,12 @@ function buildPlatformContext(): string {
 		"- Use `reply` when: the response is very long, you want to show progress mid-work, or you have multiple distinct points to make.",
 	);
 	sections.push("");
+	sections.push("## Thinking and Reasoning");
+	sections.push("- NEVER include your internal reasoning, tool steps, or planning in your final reply.");
+	sections.push("- NEVER narrate what you are doing (e.g., 'Let me search', 'I found it', 'Now I will').");
+	sections.push("- Progress and tool calls are displayed separately to the user via a working indicator.");
+	sections.push("- ONLY output the final result, answer, or message meant for the user.");
+	sections.push("");
 	sections.push("## Images");
 	sections.push('- Send images: `reply({ image: "..." })` — URL, local file path, or base64 data URL');
 	sections.push("- Use `browser` screenshot to capture webpages");

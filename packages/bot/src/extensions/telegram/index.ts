@@ -318,7 +318,7 @@ export default function telegramExtension(
 		resetWatchdog();
 		lastEndReason = "ok";
 		const chat = ch();
-		const text = agentText;
+		const text = cleanOutput(agentText);
 		if (text.trim()) {
 			bot.sendMarkdown(chat, text).catch((mdErr) => {
 				log("sendMarkdown failed, falling back to plain text:", mdErr.message);
@@ -371,4 +371,8 @@ function tr(s: string, m: number): string {
 function parse(u: string): { mimeType: string; data: string } | undefined {
 	const m = /^data:([^;]+);base64,(.+)$/.exec(u);
 	return m?.[2] ? { mimeType: m[1], data: m[2] } : undefined;
+}
+function cleanOutput(s: string): string {
+	// Strip any <thinking>...</thinking> blocks some models emit in plain text.
+	return s.replace(/<thinking>[\s\S]*?<\/thinking>/g, "").trim();
 }
