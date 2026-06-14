@@ -147,9 +147,8 @@ export class TelegramBot {
 	}
 
 	private async runEdit(): Promise<void> {
-		const entry = this.editQueue.values().next().value;
-		if (!entry) return;
-		this.editQueue.delete(`${entry.chatId}:${entry.messageId}`);
+		const key = this.editQueue.keys().next().value;
+		if (!key) return;
 
 		// Clean expired timestamps
 		const now = Date.now();
@@ -162,11 +161,19 @@ export class TelegramBot {
 			this.editTimestamps = this.editTimestamps.filter((t) => Date.now() - t < 60_000);
 		}
 
+		// Now pull the latest queued text for this message after any sleep.
+		const entry = this.editQueue.get(key);
+		if (!entry) return;
+		this.editQueue.delete(key);
+
+		// Telegram editMessageText limit is ~4096; truncate to avoid infinite failure loop.
+		const text = entry.text.length > 4000 ? `${entry.text.slice(0, 3997)}...` : entry.text;
+
 		try {
-			await this.raw.api.editMessageText(entry.chatId, entry.messageId, entry.text);
+			await this.raw.api.editMessageText(entry.chatId, entry.messageId, text);
 			this.editTimestamps.push(Date.now());
-		} catch {
-			// Edit may fail if content unchanged or message too old
+		} catch (err) {
+			console.error("[telegram] editMessageText failed:", (err as Error).message);
 		}
 	}
 

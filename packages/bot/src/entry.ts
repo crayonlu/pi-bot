@@ -49,7 +49,7 @@ async function main(): Promise<void> {
 	const resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager, extensionFactories });
 	await resourceLoader.reload();
 
-	const sessionManager = SessionManager.create(cwd, sessionDir);
+	const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
 	const { session } = await createAgentSession({
 		cwd,
 		agentDir,

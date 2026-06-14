@@ -158,7 +158,10 @@ async function executeAction(params: BrowserParams): Promise<string> {
 
 		case "evaluate": {
 			if (!params.script) return "Error: script is required for evaluate";
-			const result = await p.evaluate(params.script);
+			const result = await Promise.race([
+				p.evaluate(params.script),
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error("evaluate timeout")), 15_000)),
+			]);
 			return truncate(JSON.stringify(result, null, 2), 4000);
 		}
 

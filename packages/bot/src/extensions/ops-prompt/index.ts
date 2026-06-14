@@ -1,59 +1,13 @@
-/**
- * System prompt builder: persona + auto-injected platform context.
- *
- * The user's persona defines identity, tone, and thinking style.
- * We inject operational context that every bot needs:
- *   - Environment (hostname, OS, workspace)
- *   - Available tools
- *   - Memory system
- *   - Safety rules
- *   - Telegram constraints
- *
- * pi's default coding-agent prompt is discarded — the persona + platform
- * context fully replaces it.
- */
-
-import { hostname, type } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BotConfig } from "../../config.ts";
 
 export default function personaPromptExtension(pi: ExtensionAPI, config: BotConfig): void {
-	let isImageModel = false;
-
 	pi.on("before_agent_start", async (event) => {
-		console.log("[ops-prompt] before_agent_start start");
-		if (!config.setupComplete || !config.persona) {
-			console.log(
-				"[ops-prompt] skip: setupComplete=",
-				config.setupComplete,
-				"persona length=",
-				config.persona?.length,
-			);
-			return;
-		}
-
-		try {
-			// Auto-switch model: MiMo for images, DeepSeek V4 Flash for text
-			const hasImages = event.images && event.images.length > 0;
-			console.log("[ops-prompt] hasImages=", hasImages, "isImageModel=", isImageModel);
-			if (hasImages && !isImageModel) {
-				await pi.setModel({ provider: "ppio", id: "xiaomimimo/mimo-v2.5" } as Parameters<typeof pi.setModel>[0]);
-				isImageModel = true;
-			} else if (!hasImages && isImageModel) {
-				await pi.setModel({ provider: "ppio", id: "deepseek/deepseek-v4-flash" } as Parameters<
-					typeof pi.setModel
-				>[0]);
-				isImageModel = false;
-			}
-		} catch (e) {
-			console.error("[ops-prompt] setModel failed:", (e as Error).message);
-		}
+		if (!config.setupComplete || !config.persona) return;
 
 		// Keep pi's built-in system prompt (tool schemas, formats) and prepend persona + platform context.
 		const platform = buildPlatformContext();
-		const combined = `${config.persona}\n\n${platform}\n\n${event.systemPrompt}`;
-		console.log("[ops-prompt] system prompt length:", combined.length);
-		return { systemPrompt: combined };
+		return { systemPrompt: `${config.persona}\n\n${platform}\n\n${event.systemPrompt}` };
 	});
 }
 
@@ -63,9 +17,9 @@ function buildPlatformContext(): string {
 	sections.push("---");
 	sections.push("");
 	sections.push("## Environment");
-	sections.push(`Host: ${hostname()}`);
-	sections.push(`OS: ${type()} (Linux)`);
-	sections.push(`Workspace: /workspace/ (persistent, survives restarts)`);
+	sections.push("Host: server");
+	sections.push("OS: Linux");
+	sections.push("Workspace: /workspace/ (persistent, survives restarts)");
 	sections.push("");
 
 	sections.push("## Communication");

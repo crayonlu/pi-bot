@@ -5,6 +5,10 @@ import { TelegramBot } from "./bot.ts";
 import { registerReplyTool } from "./reply-tool.ts";
 import { SetupWizard } from "./setup-wizard.ts";
 
+const TEXT_MODEL = "deepseek/deepseek-v4-flash";
+const IMAGE_MODEL = "xiaomimimo/mimo-v2.5";
+const WATCHDOG_MS = 120_000;
+
 function log(...a: unknown[]): void {
 	console.log("[telegram]", ...a);
 }
@@ -38,6 +42,11 @@ export default function telegramExtension(
 	let wCid: number | undefined;
 	let wLines: string[] = [];
 	let agentText = "";
+	let currentModel = TEXT_MODEL;
+	let watchdog: NodeJS.Timeout | undefined;
+	let runStartTs = 0;
+	let agentRuns = 0;
+	let lastEndReason: string | undefined;
 
 	const wz = new SetupWizard(bot, config, (c) => Object.assign(config, c));
 	registerReplyTool(pi, { bot, getChatId: () => cid });
@@ -45,29 +54,61 @@ export default function telegramExtension(
 	function ch(): number {
 		return wCid ?? cid ?? 0;
 	}
+	function resetWatchdog(): void {
+		if (watchdog) {
+			clearTimeout(watchdog);
+			watchdog = undefined;
+		}
+	}
 
-	async function startW(): Promise<void> {
+	function setWatchdog(chatId: number): void {
+		resetWatchdog();
+		watchdog = setTimeout(() => {
+			log("WATCHDOG: run timed out after", Date.now() - runStartTs, "ms");
+			lastEndReason = "watchdog";
+			try {
+				onAbort?.();
+			} catch (e) {
+				log("onAbort error:", (e as Error).message);
+			}
+			busy = false;
+			wLines.push(
+				`[${new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}] [fail] timeout`,
+			);
+			if (wCid && wMid) bot.editMessage(wCid, wMid, wLines.join("\n")).catch(() => {});
+			bot.sendMessage(chatId, "Agent timed out. Reset.").catch(() => {});
+			wMid = undefined;
+			wCid = undefined;
+			wLines = [];
+			agentText = "";
+		}, WATCHDOG_MS);
+	}
+
+	async function startW(chatId: number): Promise<void> {
 		if (wMid) return;
 		try {
-			wMid = await bot.sendMessage(ch(), "Working...");
-			wCid = ch();
+			wMid = await bot.sendMessage(chatId, "Working...");
+			wCid = chatId;
 		} catch {
 			/* ok */
 		}
 	}
 
 	async function app(line: string): Promise<void> {
-		const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
-		wLines.push(`[${ts}] ${line}`);
+		wLines.push(
+			`[${new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" })}] ${line}`,
+		);
 		if (wCid && wMid) bot.editMessage(wCid, wMid, wLines.join("\n")).catch((e) => log("edit err:", e.message));
 	}
 
 	async function switchModel(chatId: number, modelId: string): Promise<void> {
+		if (modelId === currentModel) return;
 		try {
 			await pi.setModel({ provider: "ppio", id: modelId } as Parameters<typeof pi.setModel>[0]);
-			await bot.sendMessage(chatId, `Model set to ${modelId}`);
-		} catch (e) {
-			await bot.sendMessage(chatId, `Failed to set model: ${(e as Error).message}`);
+			currentModel = modelId;
+			await bot.sendMessage(chatId, `Model: ${modelId}`);
+		} catch {
+			await bot.sendMessage(chatId, `Model switch failed.`);
 		}
 	}
 
@@ -86,12 +127,9 @@ export default function telegramExtension(
 			wMid = undefined;
 			wCid = undefined;
 			wLines = [];
+			agentText = "";
+			resetWatchdog();
 			bot.sendMessage(chatId, "Ready.");
-		} else if (data === "continue") {
-			if (!busy) {
-				pi.sendUserMessage("Please continue.");
-				bot.sendMessage(chatId, "Continuing...");
-			}
 		} else if (data === "model") {
 			showModelKeyboard(chatId);
 		} else if (data.startsWith("model:")) {
@@ -110,11 +148,18 @@ export default function telegramExtension(
 		"/abort": async (c) => {
 			if (busy) {
 				onAbort?.();
+				busy = false;
 				await bot.sendMessage(c, "Aborted.");
 			} else await bot.sendMessage(c, "Idle.");
 		},
 		"/new": async (c) => {
 			onNew?.();
+			busy = false;
+			wMid = undefined;
+			wCid = undefined;
+			wLines = [];
+			agentText = "";
+			resetWatchdog();
 			await bot.sendMessage(c, "Fresh.");
 		},
 		"/compact": async (c) => {
@@ -132,10 +177,34 @@ export default function telegramExtension(
 			await showModelKeyboard(c);
 		},
 		"/status": async (c) => {
-			await bot.sendMessage(c, `Status: ${busy ? "busy" : "idle"}`);
+			await bot.sendMessage(
+				c,
+				`busy=${busy}\nruns=${agentRuns}\nmodel=${currentModel}\nlast_end=${lastEndReason ?? "n/a"}`,
+			);
+		},
+		"/debug": async (c) => {
+			const now = Date.now();
+			const state = {
+				busy,
+				currentModel,
+				chatId: cid,
+				wCid,
+				wMid,
+				wLinesLen: wLines.length,
+				agentTextLen: agentText.length,
+				msSinceStart: busy ? now - runStartTs : 0,
+				lastEndReason,
+				agentRuns,
+			};
+			await bot.sendMessage(
+				c,
+				Object.entries(state)
+					.map(([k, v]) => `${k}: ${v}`)
+					.join("\n"),
+			);
 		},
 		"/help": async (c) => {
-			await bot.sendMessage(c, "/start /config /abort /new /compact /model /status /help");
+			await bot.sendMessage(c, "/start /config /abort /new /compact /model /status /debug /help");
 		},
 	};
 
@@ -143,6 +212,18 @@ export default function telegramExtension(
 		if (!msg.userId || !isAllowedUser(config, msg.userId)) return;
 		log(`msg: uid=${msg.userId} txt="${msg.text?.slice(0, 50)}"`);
 		cid = msg.chatId;
+
+		// Auto-recovery: if a previous run is stuck past the watchdog, reset state.
+		if (busy && Date.now() - runStartTs > WATCHDOG_MS) {
+			log("auto-resetting stuck busy state");
+			busy = false;
+			wMid = undefined;
+			wCid = undefined;
+			wLines = [];
+			agentText = "";
+			resetWatchdog();
+		}
+
 		if (wz.active) {
 			if (msg.text) await wz.handleMessage(msg.chatId, msg.text);
 			return;
@@ -160,6 +241,7 @@ export default function telegramExtension(
 						await bot.sendMessage(msg.chatId, "Img fail");
 						return;
 					}
+					await switchModel(msg.chatId, IMAGE_MODEL);
 					pi.sendUserMessage(
 						[
 							{ type: "text" as const, text: msg.caption || "Analyze" },
@@ -167,6 +249,11 @@ export default function telegramExtension(
 						],
 						busy ? { deliverAs: "followUp" } : undefined,
 					);
+					if (busy) await bot.sendMessage(msg.chatId, "Queued.");
+					else {
+						wCid = msg.chatId;
+						startW(msg.chatId);
+					}
 				} catch {
 					await bot.sendMessage(msg.chatId, "DL fail");
 				}
@@ -183,23 +270,27 @@ export default function telegramExtension(
 		if (busy) {
 			pi.sendUserMessage(tx, { deliverAs: "followUp" });
 			await bot.sendMessage(msg.chatId, "Queued.");
-		} else {
-			console.log("[telegram] sendUserMessage:", tx.slice(0, 50));
-			pi.sendUserMessage(tx);
-			wCid = msg.chatId;
-			startW();
+			return;
 		}
+		await switchModel(msg.chatId, TEXT_MODEL);
+		pi.sendUserMessage(tx);
+		wCid = msg.chatId;
+		startW(msg.chatId);
 	});
 
 	pi.on("agent_start", () => {
-		console.log("[telegram] agent_start");
 		busy = true;
+		runStartTs = Date.now();
+		agentRuns += 1;
+		if (wCid) setWatchdog(wCid);
+	});
+	pi.on("turn_start", () => {
+		agentText = "";
 	});
 	pi.on("tool_execution_start", (e) => {
 		const ev = e as unknown as { toolName?: string; args?: unknown };
 		const toolName = ev.toolName ?? "?";
 		const argsText = sum(toolName, ev.args);
-		console.log("[telegram] tool_execution_start:", toolName);
 		app(`[tool] ${toolName} ${argsText}`);
 		if (isDangerous(ev)) {
 			app("[warn] dangerous operation; review before continuing");
@@ -207,7 +298,6 @@ export default function telegramExtension(
 		}
 	});
 	pi.on("message_end", (e) => {
-		console.log("[telegram] message_end");
 		const ev = e as unknown as {
 			message?: { role?: string; content?: Array<{ type: string; text?: string; thinking?: string }> };
 		};
@@ -218,7 +308,6 @@ export default function telegramExtension(
 		}
 	});
 	pi.on("turn_end", async (e) => {
-		console.log("[telegram] turn_end");
 		const ev = e as unknown as { message?: { usage?: { input: number; output: number } } };
 		if (ev.message?.usage) {
 			const tk = (ev.message.usage.input ?? 0) + (ev.message.usage.output ?? 0);
@@ -226,32 +315,28 @@ export default function telegramExtension(
 		}
 	});
 	pi.on("agent_end", () => {
-		console.log("[telegram] agent_end: text length=", agentText.length);
+		resetWatchdog();
+		lastEndReason = "ok";
 		const chat = ch();
-		if (agentText.trim()) {
-			bot.sendMarkdown(chat, agentText).catch((mdErr) => {
+		const text = agentText;
+		if (text.trim()) {
+			bot.sendMarkdown(chat, text).catch((mdErr) => {
 				log("sendMarkdown failed, falling back to plain text:", mdErr.message);
-				bot.sendMessage(chat, agentText).catch((e) => log("sendMessage also failed:", e.message));
+				bot.sendMessage(chat, text).catch((e) => log("sendMessage also failed:", e.message));
 			});
 		}
 		agentText = "";
-		busy = false;
+		wLines = [];
 		if (wMid) {
-			wLines.push("[done]");
-			bot.editMessage(wCid ?? 0, wMid, wLines.join("\n")).catch(() => {});
+			bot.editMessage(wCid ?? 0, wMid, "[done]").catch(() => {});
 		}
 		wMid = undefined;
 		wCid = undefined;
-		wLines = [];
-
-		// Quick-action buttons after reply
-		if (chat) {
-			bot.sendInlineKeyboard(chat, "What next?", [
-				{ text: "Continue", data: "continue" },
-				{ text: "New topic", data: "new_topic" },
-				{ text: "Model", data: "model" },
-			]).catch(() => {});
-		}
+		// Delay clearing busy until finishRun() has set isStreaming=false to avoid the
+		// race where a new user message arrives between agent_end emission and finishRun.
+		setTimeout(() => {
+			busy = false;
+		}, 0);
 	});
 	pi.on("session_shutdown", () => {
 		bot.stop();
