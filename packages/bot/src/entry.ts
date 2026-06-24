@@ -8,7 +8,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 import { getConfigDir, getSessionDir, loadConfig } from "./config.ts";
-import browserExtension from "./extensions/browser/index.ts";
 import personaPromptExtension from "./extensions/ops-prompt/index.ts";
 import telegramExtension from "./extensions/telegram/index.ts";
 
@@ -42,7 +41,6 @@ async function main(): Promise<void> {
 			});
 		},
 		(pi) => personaPromptExtension(pi, config),
-		(pi) => browserExtension(pi),
 	];
 
 	const settingsManager = SettingsManager.create(cwd, agentDir);
@@ -56,7 +54,27 @@ async function main(): Promise<void> {
 		settingsManager,
 		resourceLoader,
 		sessionManager,
-		tools: ["bash", "read", "write", "edit", "grep", "find", "ls", "browser", "reply"],
+		tools: [
+			"bash",
+			"read",
+			"write",
+			"edit",
+			"grep",
+			"find",
+			"ls",
+			"agent_browser",
+			"ctx_execute",
+			"ctx_execute_file",
+			"ctx_search",
+			"ctx_index",
+			"ctx_batch_execute",
+			"ctx_fetch_and_index",
+			"ctx_stats",
+			"preview_export",
+			"process",
+			"todo",
+			"reply",
+		],
 	});
 	sessionRef.current = session;
 	await session.bindExtensions({ mode: "rpc" });

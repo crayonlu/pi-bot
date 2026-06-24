@@ -2,6 +2,8 @@
  * Reply tool: lets the agent send messages/images to the Telegram user.
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { extname } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { TelegramBot } from "./bot.ts";
@@ -20,7 +22,10 @@ export function registerReplyTool(pi: ExtensionAPI, ctx: ReplyToolContext): void
 		parameters: Type.Object({
 			text: Type.Optional(Type.String({ description: "Message text to send to the user" })),
 			image: Type.Optional(
-				Type.String({ description: "Image as a URL, file_id, or base64 data URL (from browser screenshot)" }),
+				Type.String({
+					description:
+						"Image as a URL, local file path, or base64 data URL. Local paths (e.g. agent_browser screenshot output) are read and sent automatically.",
+				}),
 			),
 		}),
 		execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
@@ -31,7 +36,8 @@ export function registerReplyTool(pi: ExtensionAPI, ctx: ReplyToolContext): void
 				const sent = [];
 
 				if (params.image) {
-					const id = await ctx.bot.sendPhoto(chatId, params.image, params.text);
+					const image = resolveImage(params.image);
+					const id = await ctx.bot.sendPhoto(chatId, image, params.text);
 					sent.push(`image sent (id: ${id})`);
 				} else if (params.text) {
 					await ctx.bot.sendMessage(chatId, params.text);
@@ -57,4 +63,29 @@ function err(message: string) {
 		content: [{ type: "text" as const, text: `Reply: ${message}` }],
 		details: { sent: false },
 	};
+}
+
+const MIME_BY_EXT: Record<string, string> = {
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif": "image/gif",
+	".webp": "image/webp",
+};
+
+/**
+ * Normalize an image argument into something sendPhoto accepts:
+ * data URLs and URLs/file_ids pass through; local file paths are read
+ * and converted to a base64 data URL so grammy sends them as a photo.
+ */
+function resolveImage(image: string): string {
+	if (image.startsWith("data:") || /^https?:\/\//.test(image) || /^file_id:/.test(image)) return image;
+	// Treat as a local file path.
+	if (existsSync(image)) {
+		const mime = MIME_BY_EXT[extname(image).toLowerCase()] ?? "image/png";
+		const b64 = readFileSync(image).toString("base64");
+		return `data:${mime};base64,${b64}`;
+	}
+	// Unknown but non-local — pass through (grammy treats as file_id/URL).
+	return image;
 }
